@@ -1,2 +1,1 @@
-// Core keys module (Phase 7)
-export {};
+export * from "./key-generator.js";

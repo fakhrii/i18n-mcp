@@ -73,4 +73,87 @@ program
     }
   });
 
+program
+  .command("scan")
+  .description("Scan project for hardcoded strings using AST analysis")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit scanning to specific file(s), directory, or glob pattern")
+  .option("--include <patterns...>", "Glob patterns to include")
+  .option("--exclude <patterns...>", "Glob patterns to exclude")
+  .option("--all", "Include technical and non-user-facing strings", false)
+  .option("--min-confidence <number>", "Minimum confidence threshold (0.0 to 1.0)", "0.0")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        include?: string[];
+        exclude?: string[];
+        all: boolean;
+        minConfidence: string;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { scanHardcodedTexts } = await import(
+          "../core/scanner/scanner.js"
+        );
+        const minConf = parseFloat(options.minConfidence) || 0.0;
+
+        const result = await scanHardcodedTexts(projectPath, {
+          scope: options.scope,
+          include: options.include,
+          exclude: options.exclude,
+          onlyUserFacing: !options.all,
+          minConfidence: minConf,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Hardcoded Strings AST Scan ---\n");
+        console.log(`Path:              ${projectPath}`);
+        console.log(`Duration:          ${result.durationMs}ms`);
+        console.log(`Total Detected:    ${result.total}`);
+        console.log(`User-facing:       ${result.userFacingCount}`);
+        console.log(`Technical:         ${result.technicalCount}`);
+        console.log("\nDetected Strings:");
+
+        if (result.items.length === 0) {
+          console.log("  (No strings matched the scan criteria)\n");
+          return;
+        }
+
+        for (const item of result.items) {
+          console.log(
+            `\n  [${item.confidenceLevel} ${Math.round(item.confidence * 100)}%] "${item.text}"`
+          );
+          console.log(`    Location:   ${item.file}:${item.line}:${item.column}`);
+          console.log(`    Type:       ${item.type}`);
+          console.log(`    Class:      ${item.classification}`);
+          console.log(
+            `    Suggested:  ${item.suggestedNamespace}:${item.suggestedKey}`
+          );
+          console.log(`    Reason:     ${item.reason}`);
+          if (item.variables && item.variables.length > 0) {
+            console.log(`    Variables:  [${item.variables.join(", ")}]`);
+          }
+        }
+
+        console.log("\n----------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Scan failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);
+

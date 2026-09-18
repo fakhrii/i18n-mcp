@@ -3,8 +3,8 @@ import fg from "fast-glob";
 
 export async function fileExists(filePath: string): Promise<boolean> {
   try {
-    await fs.access(filePath);
-    return true;
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
   } catch {
     return false;
   }
