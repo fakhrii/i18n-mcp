@@ -155,5 +155,106 @@ program
     }
   );
 
+program
+  .command("plan")
+  .description("Generate deterministic i18n migration plan without modifying any files")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit planning to specific file(s), directory, or glob pattern")
+  .option("--include <patterns...>", "Glob patterns to include")
+  .option("--exclude <patterns...>", "Glob patterns to exclude")
+  .option("--source-locale <locale>", "Source locale (e.g. 'en')")
+  .option("--target-locales <locales...>", "Target locales (e.g. 'fr' 'es')")
+  .option("--min-confidence <number>", "Minimum confidence threshold (0.0 to 1.0)", "0.7")
+  .option("--include-ambiguous", "Include ambiguous strings marked for review", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        include?: string[];
+        exclude?: string[];
+        sourceLocale?: string;
+        targetLocales?: string[];
+        minConfidence: string;
+        includeAmbiguous: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { generateI18nPlan } = await import(
+          "../core/planning/plan-generator.js"
+        );
+        const minConf = parseFloat(options.minConfidence) || 0.7;
+
+        const plan = await generateI18nPlan({
+          projectPath,
+          scope: options.scope,
+          include: options.include,
+          exclude: options.exclude,
+          sourceLocale: options.sourceLocale,
+          targetLocales: options.targetLocales,
+          confidenceThreshold: minConf,
+          includeAmbiguous: options.includeAmbiguous,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(plan, null, 2));
+          return;
+        }
+
+        console.log("\n--- React Native i18n Migration Plan ---\n");
+        console.log(`Project:           ${plan.project.root} (${plan.project.framework}, ${plan.project.library || "none"})`);
+        console.log(`Locales:           source=${plan.locales.source}, targets=[${plan.locales.targets.join(", ")}]`);
+        console.log("\nSummary:");
+        console.log(`  Total Detected:        ${plan.summary.totalDetected}`);
+        console.log(`  User-facing Strings:   ${plan.summary.userFacingCount}`);
+        console.log(`  Ignored (Technical):   ${plan.summary.ignoredCount}`);
+        console.log(`  Existing Keys Reused:  ${plan.summary.reusedKeysCount}`);
+        console.log(`  New Keys to Create:    ${plan.summary.newKeysCount}`);
+        console.log(`  Requires Review:       ${plan.summary.requiresReviewCount}`);
+        console.log(`  Source Files Affected: ${plan.summary.sourceFilesAffected}`);
+        console.log(`  Locale Files Affected: ${plan.summary.localeFilesAffected}`);
+
+        console.log(`\nProposed Translations (${plan.translations.length}):`);
+        for (const t of plan.translations) {
+          const matchInfo =
+            t.matchType && t.matchType !== "NONE"
+              ? ` [Match: ${t.matchType}${t.matchConfidence ? ` ${Math.round(t.matchConfidence * 100)}%` : ""}]`
+              : "";
+          const occInfo = t.occurrences > 1 ? ` (${t.occurrences} occurrences)` : "";
+          console.log(`  [${t.action}] ${t.namespace}:${t.key} ("${t.sourceText}")${matchInfo}${occInfo}`);
+        }
+
+        console.log(`\nProposed Source Changes (${plan.sourceChanges.length}):`);
+        for (const s of plan.sourceChanges.slice(0, 20)) {
+          const req = s.requiredCodeChanges?.length
+            ? ` (Requires: ${s.requiredCodeChanges.map((c) => c.value).join(", ")})`
+            : "";
+          console.log(`  [${s.action}] ${s.file}:${s.location.line}:${s.location.column} -> ${s.replacement}${req}`);
+        }
+        if (plan.sourceChanges.length > 20) {
+          console.log(`  ... and ${plan.sourceChanges.length - 20} more change(s)`);
+        }
+
+        if (plan.warnings.length > 0) {
+          console.log("\nWarnings:");
+          for (const w of plan.warnings) {
+            console.log(`  [${w.severity.toUpperCase()}] ${w.code}: ${w.message}`);
+          }
+        }
+
+        console.log("\n----------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Plan generation failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);
 
