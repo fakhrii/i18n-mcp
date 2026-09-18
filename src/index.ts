@@ -1,6 +1,7 @@
 export * from "./models/project.js";
 export * from "./models/scanner.js";
 export * from "./models/plan.js";
+export * from "./models/replacement.js";
 export * from "./models/config.js";
 export * from "./models/errors.js";
 export * from "./config/config-loader.js";
@@ -8,6 +9,7 @@ export * from "./core/discovery/index.js";
 export * from "./core/scanner/index.js";
 export * from "./core/classifier/index.js";
 export * from "./core/planning/index.js";
+export * from "./core/replacement/index.js";
 export * from "./core/keys/index.js";
 export * from "./core/namespace/index.js";
 export * from "./core/scope/index.js";

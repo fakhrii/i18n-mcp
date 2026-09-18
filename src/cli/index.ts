@@ -256,5 +256,108 @@ program
     }
   );
 
+program
+  .command("apply")
+  .description("Safely apply an approved i18n plan to the project")
+  .argument("[plan-or-project]", "Path to plan JSON file or project root directory", ".")
+  .option("--dry-run", "Simulate changes and print diff without writing to disk", false)
+  .option("--create-backup", "Create .bak copies of files before modifying them", false)
+  .option("--fail-on-warnings", "Abort execution if any warnings occur", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      target: string,
+      options: {
+        dryRun: boolean;
+        createBackup: boolean;
+        failOnWarnings: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { applyI18nPlan } = await import(
+          "../core/replacement/plan-applicator.js"
+        );
+        const { generateI18nPlan } = await import(
+          "../core/planning/plan-generator.js"
+        );
+        const { fileExists } = await import("../utils/file-system.js");
+
+        let planToApply: import("../models/plan.js").I18nPlan | undefined;
+        let projectPath: string | undefined;
+
+        if (target.endsWith(".json") && (await fileExists(target))) {
+          const { readJsonFile } = await import("../utils/file-system.js");
+          planToApply = await readJsonFile(target) || undefined;
+        } else {
+          // If a directory was provided, generate the plan first in memory
+          projectPath = target;
+          planToApply = await generateI18nPlan({ projectPath });
+        }
+
+        const result = await applyI18nPlan({
+          plan: planToApply,
+          projectPath,
+          dryRun: options.dryRun,
+          createBackup: options.createBackup,
+          failOnWarnings: options.failOnWarnings,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- React Native i18n Plan Application ---\n");
+        console.log(`Status:                  ${result.success ? (result.dryRun ? "Dry-run SUCCESS" : "APPLIED") : "FAILED"}`);
+        console.log(`Dry-run:                 ${result.dryRun}`);
+        console.log(`Files Modified:          ${result.filesChanged.length}`);
+        console.log(`Files Skipped:           ${result.filesSkipped.length}`);
+        console.log(`Source Changes Applied:  ${result.sourceChangesApplied}`);
+        console.log(`Locale Keys Created:     ${result.translationEntriesCreated}`);
+        console.log(`Translations Pending:    ${result.translationsPending}`);
+
+        if (result.filesChanged.length > 0) {
+          console.log(`\nModified Files:`);
+          for (const f of result.filesChanged) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.warnings.length > 0) {
+          console.log("\nWarnings:");
+          for (const w of result.warnings) {
+            console.log(`  [${w.code}] ${w.file ? `${w.file}: ` : ""}${w.message}`);
+          }
+        }
+
+        if (result.errors.length > 0) {
+          console.log("\nErrors:");
+          for (const e of result.errors) {
+            console.log(`  [${e.code}] ${e.file ? `${e.file}: ` : ""}${e.message}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n------------------------------------------\n");
+
+        if (!result.success) {
+          process.exit(1);
+        }
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Application failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);
 
