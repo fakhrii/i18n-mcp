@@ -352,9 +352,9 @@ describe("AST Scanner", () => {
       onlyUserFacing: true,
     });
 
-    // Only "Hello {{contactgivenName}}, welcome back!" should be detected!
+    // Only "Hello {{givenName}}, welcome back!" should be detected!
     expect(results).toHaveLength(1);
-    expect(results[0]?.text).toBe("Hello {{contactgivenName}}, welcome back!");
+    expect(results[0]?.text).toBe("Hello {{givenName}}, welcome back!");
     expect(results[0]?.suggestedKey).toBe("HELLO_WELCOME_BACK");
 
     // When onlyUserFacing is false, the variable-only strings appear as TECHNICAL

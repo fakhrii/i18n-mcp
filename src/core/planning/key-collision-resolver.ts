@@ -35,6 +35,11 @@ export function resolveKeyCollision(
       return { key: candidateKey, action: "REUSE", reusedExisting: true };
     }
 
+    // If existing value is an empty placeholder, reuse this key to populate it cleanly
+    if (existingVal.trim().length === 0) {
+      return { key: candidateKey, action: "CREATE", reusedExisting: true };
+    }
+
     // Conservative check: if semantic similarity is very high (>= 0.90), consider it identical
     if (computeSemanticSimilarity(sourceText, existingVal) >= 0.9) {
       return { key: candidateKey, action: "REUSE", reusedExisting: true };

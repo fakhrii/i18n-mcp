@@ -85,7 +85,15 @@ export function buildReplacementExpression(
   // Handle template literal variables
   let args = `"${keyExpression}"`;
   if (item.variables && item.variables.length > 0) {
-    const varsObj = `{ ${item.variables.join(", ")} }`;
+    let varsObj: string;
+    if (item.variableExpressions && Object.keys(item.variableExpressions).length > 0) {
+      const parts = Object.entries(item.variableExpressions).map(([k, expr]) =>
+        k === expr ? k : `${k}: ${expr}`
+      );
+      varsObj = `{ ${parts.join(", ")} }`;
+    } else {
+      varsObj = `{ ${item.variables.join(", ")} }`;
+    }
     args = `"${keyExpression}", ${varsObj}`;
   }
 

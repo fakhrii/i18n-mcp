@@ -48,6 +48,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     isComparison?: boolean;
     isSwitchCase?: boolean;
     variables?: string[];
+    variableExpressions?: Record<string, string>;
   }): void {
     const {
       node,
@@ -60,6 +61,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       isComparison,
       isSwitchCase,
       variables,
+      variableExpressions,
     } = params;
 
     handledNodes.add(node);
@@ -119,6 +121,9 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       ...(propName ? { propName } : {}),
       ...(calleeName ? { calleeName } : {}),
       ...(variables && variables.length > 0 ? { variables } : {}),
+      ...(variableExpressions && Object.keys(variableExpressions).length > 0
+        ? { variableExpressions }
+        : {}),
     });
   }
 
@@ -520,6 +525,88 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     ts.forEachChild(node, visit);
   }
 
+  const COMMON_BUILTIN_NAMES = new Set([
+    "string", "number", "boolean", "math", "json", "object", "array", "date",
+    "parseint", "parsefloat", "padstart", "padend", "tostring", "tofixed",
+    "slice", "substring", "trim", "tolowercase", "touppercase", "format",
+    "concat", "join", "map", "filter", "reduce", "length", "split", "replace"
+  ]);
+
+  function findMeaningfulIdentifier(node: ts.Node): string | undefined {
+    let candidate: string | undefined;
+
+    function walk(n: ts.Node) {
+      if (candidate) return;
+      if (ts.isIdentifier(n)) {
+        const text = n.text;
+        if (!COMMON_BUILTIN_NAMES.has(text.toLowerCase())) {
+          candidate = text;
+          return;
+        }
+      }
+      ts.forEachChild(n, walk);
+    }
+
+    walk(node);
+    return candidate;
+  }
+
+  function sanitizeVarName(name: string): string {
+    const clean = name.replace(/[^a-zA-Z0-9_]/g, "");
+    if (!clean) return "param";
+    if (!/^[a-zA-Z_$]/.test(clean)) {
+      return `val_${clean}`;
+    }
+    return clean;
+  }
+
+  function extractTemplateVariable(
+    expr: ts.Expression,
+    existingVarNames: Set<string>
+  ): { varName: string; expressionText: string } {
+    const expressionText = expr.getText(sourceFile).trim();
+
+    // 1. Simple identifier: e.g. minutes, count, userName
+    if (ts.isIdentifier(expr)) {
+      let varName = sanitizeVarName(expr.text);
+      if (existingVarNames.has(varName)) {
+        varName = `${varName}_val`;
+      }
+      return { varName, expressionText };
+    }
+
+    // 2. Property access: e.g. user.firstName, props.title
+    if (ts.isPropertyAccessExpression(expr)) {
+      const prop = expr.name.text;
+      let varName = sanitizeVarName(prop);
+      if (existingVarNames.has(varName) && ts.isIdentifier(expr.expression)) {
+        varName = `${expr.expression.text}_${prop}`;
+      }
+      if (existingVarNames.has(varName)) {
+        varName = `${varName}_val`;
+      }
+      return { varName, expressionText };
+    }
+
+    // 3. Meaningful identifier inside complex call/expression:
+    // e.g. String(seconds).padStart(2, '0') -> 'seconds'
+    const meaningfulId = findMeaningfulIdentifier(expr);
+    if (meaningfulId) {
+      let varName = sanitizeVarName(meaningfulId);
+      if (existingVarNames.has(varName)) {
+        varName = `${varName}_val`;
+      }
+      return { varName, expressionText };
+    }
+
+    // 4. Fallback: sanitize expression text or use 'param'
+    let varName = sanitizeVarName(expressionText);
+    if (existingVarNames.has(varName)) {
+      varName = `${varName}_val`;
+    }
+    return { varName, expressionText };
+  }
+
   function processTemplateExpression(
     expr: ts.TemplateExpression,
     astType: AstContextType,
@@ -528,12 +615,19 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     calleeName?: string
   ): void {
     const variables: string[] = [];
+    const variableExpressions: Record<string, string> = {};
+    const usedVarNames = new Set<string>();
     let formattedText = expr.head.text;
 
     for (const span of expr.templateSpans) {
-      const varName = span.expression.getText(sourceFile).replace(/[^a-zA-Z0-9_]/g, "");
-      variables.push(varName || "param");
-      formattedText += `{{${varName || "param"}}}` + span.literal.text;
+      const { varName, expressionText } = extractTemplateVariable(
+        span.expression,
+        usedVarNames
+      );
+      usedVarNames.add(varName);
+      variables.push(varName);
+      variableExpressions[varName] = expressionText;
+      formattedText += `{{${varName}}}` + span.literal.text;
     }
 
     addCandidate({
@@ -545,6 +639,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       componentName: compName,
       calleeName,
       variables,
+      variableExpressions,
     });
   }
 

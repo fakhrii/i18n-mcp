@@ -51,6 +51,7 @@ export interface DetectedString {
   propName?: string;
   calleeName?: string;
   variables?: string[];
+  variableExpressions?: Record<string, string>;
 }
 
 export interface ScanOptions {

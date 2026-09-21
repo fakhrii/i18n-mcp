@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { TranslationPlan } from "../../models/plan.js";
 import type { ApplyError, ApplyWarning } from "../../models/replacement.js";
 import { fileExists, readTextFile, toPosixPath } from "../../utils/file-system.js";
+import { getNestedValue, setNestedValue } from "../../utils/nested-json.js";
 
 export interface LocaleUpdateResult {
   stagedFiles: Map<string, string>; // relative path -> new content
@@ -17,6 +18,66 @@ export interface LocaleUpdateResult {
 function detectIndentation(jsonString: string): string {
   const match = jsonString.match(/^[ \t]+(?=")/m);
   return match ? match[0] : "  ";
+}
+
+/**
+ * Resolves the appropriate path within the JSON object to place the translation key.
+ */
+function resolveTargetKeyPath(
+  parsed: Record<string, unknown>,
+  namespace: string,
+  key: string,
+  relPath?: string
+): string {
+  // If the file itself is the namespace file (e.g. locales/en/common.json or locales/en/pispi.json)
+  const isNamespaceFile =
+    relPath &&
+    path.basename(relPath, ".json").toLowerCase() === namespace.toLowerCase();
+
+  if (isNamespaceFile) {
+    // If key erroneously includes namespace prefix (e.g. "pispi.ONBOARDING.TITLE"), strip it
+    if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
+      return key.slice(namespace.length + 1);
+    }
+    return key;
+  }
+
+  // Otherwise, it's a multi-namespace file (e.g. locales/en.json) or single-file layout:
+  // 1. If key already exists in parsed directly (e.g. getNestedValue(parsed, key) !== undefined)
+  if (getNestedValue(parsed, key) !== undefined) {
+    return key;
+  }
+
+  // 2. If key exists with namespace prefix: e.g. getNestedValue(parsed, `${namespace}.${key}`) !== undefined
+  const namespacedPath = `${namespace}.${key}`;
+  if (getNestedValue(parsed, namespacedPath) !== undefined) {
+    return namespacedPath;
+  }
+
+  // 3. If key already starts with `${namespace}.`:
+  if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
+    return key;
+  }
+
+  // 4. Check if parsed has top-level namespace object for this namespace (case-insensitive)
+  const matchedNsKey = Object.keys(parsed).find(
+    (k) => k.toLowerCase() === namespace.toLowerCase()
+  );
+  if (matchedNsKey) {
+    return `${matchedNsKey}.${key}`;
+  }
+
+  // 5. If parsed has top-level namespace objects and namespace is not "common", nest under namespace
+  const hasTopLevelNamespaces = Object.values(parsed).some(
+    (v) => typeof v === "object" && v !== null && !Array.isArray(v)
+  );
+
+  if (hasTopLevelNamespaces && namespace !== "common") {
+    return `${namespace}.${key}`;
+  }
+
+  // 6. Default to key
+  return key;
 }
 
 /**
@@ -77,9 +138,25 @@ export async function prepareLocaleUpdates(
 
     let entriesAdded = 0;
     for (const entry of newEntries) {
-      if (Object.prototype.hasOwnProperty.call(parsed, entry.key)) {
-        const existingVal = parsed[entry.key];
-        if (existingVal !== entry.sourceLocale.value) {
+      const targetPath = resolveTargetKeyPath(parsed, entry.namespace, entry.key, relPath);
+      const existingVal = getNestedValue(parsed, targetPath);
+
+      if (existingVal !== undefined) {
+        // If already identical to planned value, skip
+        if (existingVal === entry.sourceLocale.value) {
+          continue;
+        }
+
+        // If existing value was an empty placeholder, populate it cleanly in-place
+        if (typeof existingVal === "string" && existingVal.trim().length === 0) {
+          setNestedValue(parsed, targetPath, entry.sourceLocale.value);
+          entriesAdded++;
+          translationEntriesCreated++;
+          continue;
+        }
+
+        // If existing value is non-empty string and differs, report conflict
+        if (typeof existingVal === "string" && existingVal.trim().length > 0) {
           errors.push({
             code: "KEY_CONFLICT",
             message: `Key collision in ${entry.namespace}:${entry.key}. Existing: "${String(existingVal)}", Planned: "${entry.sourceLocale.value}"`,
@@ -93,11 +170,25 @@ export async function prepareLocaleUpdates(
           });
           continue;
         }
-        // If exact same value already present, no conflict
-        continue;
+
+        // If existing value is an object (key collided with an existing section)
+        if (typeof existingVal === "object" && existingVal !== null) {
+          errors.push({
+            code: "KEY_CONFLICT",
+            message: `Key collision in ${entry.namespace}:${entry.key}. Key collides with an existing object node.`,
+            file: toPosixPath(relPath),
+            details: {
+              namespace: entry.namespace,
+              key: entry.key,
+              existing: "[Object]",
+              planned: entry.sourceLocale.value,
+            },
+          });
+          continue;
+        }
       }
 
-      parsed[entry.key] = entry.sourceLocale.value;
+      setNestedValue(parsed, targetPath, entry.sourceLocale.value);
       entriesAdded++;
       translationEntriesCreated++;
     }

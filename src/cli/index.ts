@@ -12,6 +12,14 @@ program
   .version("0.1.0");
 
 program
+  .command("serve")
+  .description("Start the MCP server on stdio for AI clients")
+  .action(async () => {
+    const { startStdioServer } = await import("../mcp/server.js");
+    await startStdioServer();
+  });
+
+program
   .command("analyze")
   .description("Analyze project structure, existing i18n configuration, and namespaces")
   .argument("[path]", "Path to project root (defaults to current directory)", ".")
@@ -359,5 +367,294 @@ program
     }
   );
 
-program.parse(process.argv);
+program
+  .command("translate")
+  .description("Translate missing keys in target locale files")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--source-locale <locale>", "Source locale (e.g. 'en')")
+  .option("--target-locales <locales...>", "Target locales to translate to (e.g. 'fr' 'es')")
+  .option("--namespaces <namespaces...>", "Limit translation to specific namespaces")
+  .option("--dry-run", "Simulate translation without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        sourceLocale?: string;
+        targetLocales?: string[];
+        namespaces?: string[];
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { translateI18n } = await import(
+          "../core/translation/translation-service.js"
+        );
 
+        const result = await translateI18n({
+          projectPath,
+          sourceLocale: options.sourceLocale,
+          targetLocales: options.targetLocales,
+          namespaces: options.namespaces,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- React Native i18n Translation ---\n");
+        console.log(`Translated:      ${result.translated}`);
+        console.log(`Unchanged:       ${result.unchanged}`);
+        console.log(`Pending:         ${result.pending}`);
+        console.log(`Review:          ${result.review}`);
+        console.log(`Files Modified:  ${result.filesModified.length}`);
+        if (result.filesModified.length > 0) {
+          for (const f of result.filesModified) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.warnings.length > 0) {
+          console.log("\nWarnings:");
+          for (const w of result.warnings) {
+            console.log(`  - ${w}`);
+          }
+        }
+
+        if (result.errors.length > 0) {
+          console.log("\nErrors:");
+          for (const e of result.errors) {
+            console.log(`  - ${e}`);
+          }
+        }
+
+        console.log("\n-------------------------------------\n");
+
+        if (result.errors.length > 0) {
+          process.exit(1);
+        }
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Translation failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("validate")
+  .description("Validate i18n implementations across locale files and source code")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--locales <locales...>", "Locales to validate")
+  .option("--namespaces <namespaces...>", "Namespaces to validate")
+  .option("--check-source", "Scan source code for remaining unextracted strings", false)
+  .option("--scope <scope...>", "Scope when check-source is active")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        locales?: string[];
+        namespaces?: string[];
+        checkSource: boolean;
+        scope?: string[];
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { validateI18n } = await import(
+          "../core/validation/i18n-validator.js"
+        );
+
+        const result = await validateI18n({
+          projectPath,
+          locales: options.locales,
+          namespaces: options.namespaces,
+          checkSourceCode: options.checkSource,
+          scope: options.scope,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- React Native i18n Validation ---\n");
+        console.log(`Valid:           ${result.valid ? "YES" : "NO"}`);
+        console.log(`Errors:          ${result.errorCount}`);
+        console.log(`Warnings:        ${result.warningCount}`);
+        console.log(`Total Keys:      ${result.summary.totalKeys}`);
+        console.log(`Locales:         [${result.summary.localesChecked.join(", ")}]`);
+        console.log(`Namespaces:      [${result.summary.namespacesChecked.join(", ")}]`);
+
+        if (result.issues.length > 0) {
+          console.log("\nIssues:");
+          for (const issue of result.issues) {
+            console.log(
+              `  [${issue.severity.toUpperCase()}] [${issue.type}] ${issue.file ? `${issue.file}: ` : ""}${issue.message}`
+            );
+          }
+        }
+
+        console.log("\n------------------------------------\n");
+
+        if (!result.valid) {
+          process.exit(1);
+        }
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Validation failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("internationalize")
+  .description("End-to-end automated internationalization pipeline")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Target files or folders to internationalize")
+  .option("--source-locale <locale>", "Source locale (e.g. 'en')")
+  .option("--target-locales <locales...>", "Target locales (e.g. 'fr' 'es')")
+  .option("--apply", "Apply changes to source and locale files (defaults to false / dry-run)", false)
+  .option("--dry-run", "Explicitly run in dry-run mode (default)", false)
+  .option("--translate", "Translate missing keys into target locales", false)
+  .option("--create-backup", "Create .bak copies of original files", false)
+  .option("--fail-on-warnings", "Fail execution if any warnings occur", false)
+  .option("--include <patterns...>", "Glob patterns to include")
+  .option("--exclude <patterns...>", "Glob patterns to exclude")
+  .option("--namespaces <namespaces...>", "Limit to specific namespaces")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        sourceLocale?: string;
+        targetLocales?: string[];
+        apply: boolean;
+        dryRun: boolean;
+        translate: boolean;
+        createBackup: boolean;
+        failOnWarnings: boolean;
+        include?: string[];
+        exclude?: string[];
+        namespaces?: string[];
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { internationalizeProject } = await import(
+          "../core/orchestration/internationalize-service.js"
+        );
+
+        // Conservative defaults: if --apply is not set, or --dry-run is set, dryRun is true
+        const isDryRun = options.dryRun || !options.apply;
+
+        const result = await internationalizeProject({
+          projectPath,
+          scope: options.scope,
+          sourceLocale: options.sourceLocale,
+          targetLocales: options.targetLocales,
+          dryRun: isDryRun,
+          apply: options.apply,
+          translate: options.translate,
+          createBackup: options.createBackup,
+          failOnWarnings: options.failOnWarnings,
+          include: options.include,
+          exclude: options.exclude,
+          namespaces: options.namespaces,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- React Native Automated Internationalization ---\n");
+        console.log(`Status:                  ${result.status}`);
+        console.log(`Success:                 ${result.success}`);
+        console.log(`Framework:               ${result.project.framework || "unknown"}`);
+        console.log(`i18n Library:            ${result.project.i18nLibrary || "none"}`);
+        console.log(`Source Locale:           ${result.project.sourceLocale || "en"}`);
+        console.log(`Target Locales:          [${(result.project.targetLocales || []).join(", ")}]`);
+        console.log("\nScan Summary:");
+        console.log(`  Candidates:            ${result.scan.candidates}`);
+        console.log(`  User-facing:           ${result.scan.userFacing}`);
+        console.log(`  Technical:             ${result.scan.technical}`);
+        console.log(`  Review:                ${result.scan.review}`);
+        console.log("\nPlan Summary:");
+        console.log(`  Source Changes:        ${result.plan.changes}`);
+        console.log(`  Review Items:          ${result.plan.reviewItems}`);
+        console.log(`  Translation Entries:   ${result.plan.translationEntries}`);
+
+        if (result.apply) {
+          console.log("\nApplied Modifications:");
+          console.log(`  Files Changed:         ${result.apply.filesChanged.length}`);
+          console.log(`  Source Replacements:   ${result.apply.sourceChangesApplied}`);
+          console.log(`  Locale Keys Created:   ${result.apply.translationEntriesCreated}`);
+          for (const f of result.apply.filesChanged) {
+            console.log(`    - ${f}`);
+          }
+        }
+
+        if (result.translation) {
+          console.log("\nTranslation Results:");
+          console.log(`  Translated:            ${result.translation.translated}`);
+          console.log(`  Unchanged:             ${result.translation.unchanged}`);
+          console.log(`  Pending Translation:   ${result.translation.pending}`);
+          console.log(`  Needs Review:          ${result.translation.review}`);
+        }
+
+        if (result.validation) {
+          console.log("\nValidation:");
+          console.log(`  Valid:                 ${result.validation.valid ? "YES" : "NO"}`);
+          console.log(`  Errors:                ${result.validation.errorCount}`);
+          console.log(`  Warnings:              ${result.validation.warningCount}`);
+        }
+
+        if (result.warnings.length > 0) {
+          console.log("\nWarnings:");
+          for (const w of result.warnings) {
+            console.log(`  - ${w}`);
+          }
+        }
+
+        if (result.errors.length > 0) {
+          console.log("\nErrors:");
+          for (const e of result.errors) {
+            console.log(`  - ${e}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n---------------------------------------------------\n");
+
+        if (!result.success) {
+          process.exit(1);
+        }
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Internationalization failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program.parse(process.argv);

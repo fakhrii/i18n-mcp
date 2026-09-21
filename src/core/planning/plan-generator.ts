@@ -36,6 +36,7 @@ import {
   readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
+import { flattenNestedObject } from "../../utils/nested-json.js";
 import { logger } from "../../utils/logger.js";
 
 /**
@@ -76,11 +77,10 @@ async function loadTargetLocaleTranslations(
           path.join(localeSubdir, f)
         );
         if (!content) continue;
+        const flat = flattenNestedObject(content);
         const nsMap = new Map<string, string>();
-        for (const [k, v] of Object.entries(content)) {
-          if (typeof v === "string") {
-            nsMap.set(k, v);
-          }
+        for (const [k, v] of flat.entries()) {
+          nsMap.set(k, v);
         }
         localeMap.set(ns, nsMap);
       }
@@ -89,16 +89,27 @@ async function loadTargetLocaleTranslations(
       const singleFile = path.join(fullLocaleDir, `${locale}.json`);
       const content = await readJsonFile<Record<string, unknown>>(singleFile);
       if (content) {
+        let hasNamespaces = false;
         for (const [k, v] of Object.entries(content)) {
           if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-            const nsMap = new Map<string, string>();
-            for (const [subK, subV] of Object.entries(v as Record<string, unknown>)) {
-              if (typeof subV === "string") {
-                nsMap.set(subK, subV);
-              }
+            hasNamespaces = true;
+            const nsMap = localeMap.get(k) || new Map<string, string>();
+            const nsFlat = flattenNestedObject(v as Record<string, unknown>);
+            for (const [subK, subV] of nsFlat.entries()) {
+              nsMap.set(subK, subV);
             }
             localeMap.set(k, nsMap);
           }
+        }
+
+        if (!hasNamespaces) {
+          const ns = "common";
+          const nsMap = localeMap.get(ns) || new Map<string, string>();
+          const flat = flattenNestedObject(content);
+          for (const [subK, subV] of flat.entries()) {
+            nsMap.set(subK, subV);
+          }
+          localeMap.set(ns, nsMap);
         }
       }
     }
