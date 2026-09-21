@@ -1,2 +1,1 @@
-// Core scope module (Phase 8)
-export {};
+export * from "./scope-resolver.js";

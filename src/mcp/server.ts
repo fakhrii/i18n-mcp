@@ -38,11 +38,16 @@ import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 
 // Auto-start when executed directly
+const currentFilePath = fileURLToPath(import.meta.url).toLowerCase();
+const executedPath = process.argv[1] ? path.resolve(process.argv[1]).toLowerCase() : "";
+
 const isDirectExecution =
-  process.argv[1] &&
-  (fileURLToPath(import.meta.url) === path.resolve(process.argv[1]) ||
-    process.argv[1].endsWith("mcp/server.js") ||
-    process.argv[1].endsWith("mcp\\server.js"));
+  executedPath.length > 0 &&
+  (currentFilePath === executedPath ||
+    executedPath.endsWith("server.js") ||
+    executedPath.endsWith("server.ts") ||
+    executedPath.endsWith("mcp/server.js") ||
+    executedPath.endsWith("mcp\\server.js"));
 
 if (isDirectExecution) {
   startStdioServer().catch((error) => {

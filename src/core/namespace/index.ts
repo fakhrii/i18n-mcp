@@ -1,2 +1,1 @@
-// Core namespace module (Phase 6)
-export {};
+export * from "./namespace-resolver.js";

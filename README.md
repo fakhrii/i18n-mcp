@@ -28,6 +28,28 @@ Analyzes a project without modifying any files.
   - `accessPatterns`: Detected hooks and translation functions (`useTranslation`, `t`, `i18n.t`, `Trans`)
   - `warnings`: Actionable warnings (missing target locales, inconsistent namespace files, malformed JSON)
 
+### `scan_hardcoded_texts`
+Scans a React Native project or requested scope for hardcoded user-facing strings using AST analysis. Does NOT modify any files.
+- **Inputs**:
+  - `projectPath` (string, optional): Project root directory.
+  - `scope` (string | string[], optional): Single file, directory, or glob pattern.
+  - `include` (string[], optional): Custom inclusion globs.
+  - `exclude` (string[], optional): Custom exclusion globs.
+  - `onlyUserFacing` (boolean, optional, default `true`): If false, includes technical strings.
+  - `minConfidence` (number, optional, default `0.0`): Confidence score filter (0.0 to 1.0).
+- **Returns**:
+  - `total`: Total strings detected
+  - `userFacingCount`: Number of user-facing strings
+  - `technicalCount`: Number of technical strings
+  - `items`: Array of detections with:
+    - `file`, `line`, `column`, `endLine`, `endColumn`
+    - `text`, `rawText`, `type` (`JSX_TEXT`, `JSX_ATTRIBUTE`, `CALL_EXPRESSION`, `OBJECT_PROPERTY`, `TEMPLATE_LITERAL`, etc.)
+    - `classification` (`UI_TEXT`, `BUTTON`, `PLACEHOLDER`, `ACCESSIBILITY`, `NOTIFICATION`, `ERROR_MESSAGE`, etc.)
+    - `confidence` (0.00 - 1.00) and `confidenceLevel` (`HIGH`, `MEDIUM`, `LOW`)
+    - `suggestedNamespace` and `suggestedKey` (UPPER_SNAKE_CASE)
+    - `reason`: Contextual explanation
+    - `variables`: Extracted interpolation placeholders for template literals (e.g. `{{name}}`)
+
 ---
 
 ## Layered Architecture
@@ -72,14 +94,17 @@ src/
 For debugging and local development without an MCP client:
 
 ```bash
-# Analyze current project
-npx i18n-mcp analyze
+# Scan hardcoded strings in current project
+npx i18n-mcp scan
 
-# Analyze specific project directory
-npx i18n-mcp analyze ./my-react-native-app
+# Scan specific project directory
+npx i18n-mcp scan ./my-react-native-app
+
+# Scan with scope (e.g. specific feature or file)
+npx i18n-mcp scan ./my-react-native-app --scope src/features/auth
 
 # Output raw JSON
-npx i18n-mcp analyze ./my-react-native-app --json
+npx i18n-mcp scan ./my-react-native-app --json
 ```
 
 ---

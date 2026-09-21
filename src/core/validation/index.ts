@@ -1,2 +1,1 @@
-// Core validation module (Phase 11)
-export {};
+export { validateI18n } from "./i18n-validator.js";

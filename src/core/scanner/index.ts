@@ -1,2 +1,2 @@
-// Core scanner module (Phase 3)
-export {};
+export * from "./ast-scanner.js";
+export * from "./scanner.js";
