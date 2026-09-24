@@ -49,6 +49,112 @@ export interface I18nDiscoveryResult {
   warnings: ConfigWarning[];
 }
 
+export interface CodeI18nConfig {
+  library?: I18nLibraryType;
+  sourceLocale?: string;
+  allLocales?: string[];
+  defaultNamespace?: string;
+  namespaces?: string[];
+  localeDirectory?: string;
+}
+
+function extractResourcesLocales(content: string): string[] {
+  const match = content.match(/resources\s*:\s*\{/);
+  if (!match || match.index === undefined) return [];
+  const startIdx = match.index + match[0].length;
+  let depth = 1;
+  let endIdx = startIdx;
+  while (depth > 0 && endIdx < content.length) {
+    if (content[endIdx] === "{") depth++;
+    else if (content[endIdx] === "}") depth--;
+    endIdx++;
+  }
+  const resourcesBody = content.slice(startIdx, endIdx - 1);
+
+  const keyMatches = Array.from(
+    resourcesBody.matchAll(
+      /(?:^|\n)\s*['"]?([a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?)['"]?\s*:\s*[{a-zA-Z0-9_]/g
+    )
+  );
+  return keyMatches.map((m) => m[1]!).filter(Boolean);
+}
+
+/**
+ * Extracts configuration options declared in project i18n code files
+ * (e.g. fallbackLng, lng, supportedLngs, resources, defaultNS, ns, locale imports).
+ */
+export function parseCodeLevelI18nConfig(content: string): CodeI18nConfig {
+  const result: CodeI18nConfig = {};
+
+  // 1. Library detection from imports/usage
+  if (content.includes("react-i18next") || content.includes("initReactI18next")) {
+    result.library = "react-i18next";
+  } else if (content.includes("i18next")) {
+    result.library = "i18next";
+  }
+
+  // 2. fallbackLng: 'en' or fallbackLng: ['en', 'fr']
+  const fallbackMatch = content.match(
+    /fallbackLng\s*:\s*(?:['"]([a-zA-Z_-]+)['"]|\[\s*['"]([a-zA-Z_-]+)['"])/
+  );
+  if (fallbackMatch) {
+    result.sourceLocale = fallbackMatch[1] || fallbackMatch[2];
+  }
+
+  // 3. lng: 'en'
+  const lngMatch = content.match(/\blng\s*:\s*['"]([a-zA-Z_-]+)['"]/);
+  if (lngMatch && !result.sourceLocale) {
+    result.sourceLocale = lngMatch[1];
+  }
+
+  // 4. supportedLngs: ['en', 'fr', 'es'] or languages: ['en', 'fr']
+  const supportedLngsMatch = content.match(
+    /(?:supportedLngs|supportedLanguages|languages|locales)\s*:\s*\[([^\]]+)\]/
+  );
+  if (supportedLngsMatch && supportedLngsMatch[1]) {
+    const lngs = supportedLngsMatch[1]
+      .split(",")
+      .map((s) => s.replace(/['"\s]/g, ""))
+      .filter(Boolean);
+    if (lngs.length > 0) {
+      result.allLocales = lngs;
+    }
+  }
+
+  // 5. resources: { en: ..., fr: ..., es: ... }
+  const resourcesLocales = extractResourcesLocales(content);
+  if (resourcesLocales.length > 0) {
+    result.allLocales = Array.from(new Set([...(result.allLocales || []), ...resourcesLocales]));
+  }
+
+  // 6. defaultNS: 'common' or defaultNamespace: 'common'
+  const defaultNsMatch = content.match(
+    /(?:defaultNS|defaultNamespace)\s*:\s*['"]([^'"]+)['"]/
+  );
+  if (defaultNsMatch && defaultNsMatch[1]) {
+    result.defaultNamespace = defaultNsMatch[1];
+  }
+
+  // 7. ns: ['common', 'auth']
+  const nsMatch = content.match(/\bns\s*:\s*\[([^\]]+)\]/);
+  if (nsMatch && nsMatch[1]) {
+    result.namespaces = nsMatch[1]
+      .split(",")
+      .map((s) => s.replace(/['"\s]/g, ""))
+      .filter(Boolean);
+  }
+
+  // 8. Infer localeDirectory from import statements
+  const importLocaleMatch = content.match(
+    /['"](?:\.\/|\.\.\/)?([a-zA-Z0-9_\-\/]*locales[a-zA-Z0-9_\-\/]*)\/[a-zA-Z_-]+\.json['"]/
+  );
+  if (importLocaleMatch && importLocaleMatch[1]) {
+    result.localeDirectory = importLocaleMatch[1];
+  }
+
+  return result;
+}
+
 export async function detectI18n(
   projectRoot: string,
   allDependencies: Record<string, string>,
@@ -67,7 +173,7 @@ export async function detectI18n(
     library = "i18next";
   }
 
-  // 2. Detect Config File
+  // 2. Detect Config File in project
   let configFile: string | undefined;
   for (const candidate of COMMON_CONFIG_FILES) {
     const fullPath = path.join(projectRoot, candidate);
@@ -77,21 +183,23 @@ export async function detectI18n(
     }
   }
 
-  // If library not yet detected but config file or i18n imports exist, detect custom or i18next
-  if (library === "none" && configFile) {
+  // 3. Parse Code-Level Config if found
+  let codeConfig: CodeI18nConfig = {};
+  if (configFile) {
     const configContent = await readTextFile(path.join(projectRoot, configFile));
     if (configContent) {
-      if (configContent.includes("react-i18next")) {
-        library = "react-i18next";
-      } else if (configContent.includes("i18next")) {
-        library = "i18next";
-      } else {
-        library = "custom";
+      codeConfig = parseCodeLevelI18nConfig(configContent);
+      if (library === "none" && codeConfig.library) {
+        library = codeConfig.library;
       }
     }
   }
 
-  // 3. Detect Locale Directory
+  if (library === "none" && configFile) {
+    library = "custom";
+  }
+
+  // 4. Detect Locale Directory
   let localeDirectory: string | null = null;
   if (userConfig?.localeDirectory) {
     const userPath = path.join(projectRoot, userConfig.localeDirectory);
@@ -106,6 +214,13 @@ export async function detectI18n(
     }
   }
 
+  if (!localeDirectory && codeConfig.localeDirectory) {
+    const candidatePath = path.join(projectRoot, codeConfig.localeDirectory);
+    if (await dirExists(candidatePath)) {
+      localeDirectory = toPosixPath(codeConfig.localeDirectory);
+    }
+  }
+
   if (!localeDirectory) {
     for (const candidate of COMMON_LOCALE_DIRS) {
       const fullPath = path.join(projectRoot, candidate);
@@ -116,7 +231,7 @@ export async function detectI18n(
     }
   }
 
-  // 4. Inspect Locales and Namespaces
+  // 5. Inspect Locales and Namespaces from Disk
   const detectedLocales: string[] = [];
   const namespacesSet: Set<string> = new Set();
   const localeNamespacesMap: Map<string, Set<string>> = new Map();
@@ -128,7 +243,6 @@ export async function detectI18n(
     if (subdirs.length > 0) {
       // Structure: locales/<locale>/<namespace>.json
       for (const localeName of subdirs) {
-        // Skip non-locale folders
         if (localeName.startsWith(".") || localeName === "node_modules") continue;
         detectedLocales.push(localeName);
         const nsSet = new Set<string>();
@@ -141,7 +255,6 @@ export async function detectI18n(
             namespacesSet.add(ns);
             nsSet.add(ns);
 
-            // Validate json syntax
             const jsonContent = await readJsonFile(path.join(localeSubdirPath, f));
             if (jsonContent === null) {
               warnings.push({
@@ -173,7 +286,6 @@ export async function detectI18n(
               file: toPosixPath(path.join(localeDirectory, f)),
             });
           } else if (typeof jsonContent === "object" && jsonContent !== null) {
-            // If top-level values are objects, treat keys as namespaces
             for (const [key, val] of Object.entries(jsonContent)) {
               if (typeof val === "object" && val !== null && !Array.isArray(val)) {
                 namespacesSet.add(key);
@@ -185,32 +297,59 @@ export async function detectI18n(
     }
   }
 
-  // 5. Determine Source Locale and Target Locales
-  let sourceLocale = userConfig?.locales?.source || "en";
-  let targetLocales: string[] = userConfig?.locales?.targets || [];
-
-  if (!userConfig?.locales?.source) {
+  // 6. Determine Source Locale (Priority: userConfig -> codeConfig -> detectedLocales -> default 'en')
+  let sourceLocale = userConfig?.locales?.source || codeConfig.sourceLocale;
+  if (!sourceLocale) {
     if (detectedLocales.includes("en")) {
       sourceLocale = "en";
     } else if (detectedLocales.includes("en-US")) {
       sourceLocale = "en-US";
     } else if (detectedLocales.length > 0) {
       sourceLocale = detectedLocales[0]!;
+    } else if (codeConfig.allLocales && codeConfig.allLocales.length > 0) {
+      sourceLocale = codeConfig.allLocales.includes("en") ? "en" : codeConfig.allLocales[0]!;
+    } else {
+      sourceLocale = "en";
     }
   }
 
-  if (targetLocales.length === 0) {
-    targetLocales = detectedLocales.filter((l) => l !== sourceLocale);
+  // 7. Determine Target Locales (Merge userConfig + codeConfig + disk locales)
+  const targetLocalesSet = new Set<string>();
+
+  if (userConfig?.locales?.targets) {
+    for (const t of userConfig.locales.targets) {
+      if (t !== sourceLocale) targetLocalesSet.add(t);
+    }
   }
 
-  // If user config has explicit namespaces, merge them
+  if (codeConfig.allLocales) {
+    for (const l of codeConfig.allLocales) {
+      if (l !== sourceLocale) targetLocalesSet.add(l);
+    }
+  }
+
+  for (const l of detectedLocales) {
+    if (l !== sourceLocale) targetLocalesSet.add(l);
+  }
+
+  const targetLocales = Array.from(targetLocalesSet);
+
+  // 8. Merge Namespaces from codeConfig and userConfig
+  if (codeConfig.defaultNamespace) {
+    namespacesSet.add(codeConfig.defaultNamespace);
+  }
+  if (codeConfig.namespaces) {
+    for (const ns of codeConfig.namespaces) {
+      namespacesSet.add(ns);
+    }
+  }
   if (userConfig?.namespaces) {
     for (const ns of Object.values(userConfig.namespaces)) {
       namespacesSet.add(ns);
     }
   }
 
-  // 6. Check Namespace consistency across locales
+  // 9. Check Namespace consistency across locales
   if (localeNamespacesMap.size > 1) {
     const sourceNamespaces = localeNamespacesMap.get(sourceLocale) || namespacesSet;
     for (const targetLocale of targetLocales) {
@@ -229,7 +368,7 @@ export async function detectI18n(
     }
   }
 
-  // 7. Detect Translation Access Patterns in source code
+  // 10. Detect Translation Access Patterns in source code
   const sourceFiles = await findFilesByGlob("src/**/*.{ts,tsx,js,jsx}", projectRoot, [
     "**/node_modules/**",
     "**/dist/**",
@@ -238,7 +377,6 @@ export async function detectI18n(
     "**/*.spec.*",
   ]);
 
-  // Sample a reasonable number of source files to detect access patterns quickly
   const sampleFiles = sourceFiles.slice(0, 30);
   for (const relPath of sampleFiles) {
     const content = await readTextFile(path.join(projectRoot, relPath));
@@ -258,7 +396,9 @@ export async function detectI18n(
     }
   }
 
-  const detected = library !== "none" || localeDirectory !== null || configFile !== undefined;
+  const detected =
+    library !== "none" || localeDirectory !== null || configFile !== undefined;
+  const needsSetup = !detected;
 
   if (detected && !localeDirectory) {
     warnings.push({
@@ -276,6 +416,7 @@ export async function detectI18n(
       sourceLocale,
       targetLocales,
       ...(configFile ? { configFile } : {}),
+      needsSetup,
     },
     namespaces: Array.from(namespacesSet).sort(),
     accessPatterns: Array.from(accessPatterns).sort(),

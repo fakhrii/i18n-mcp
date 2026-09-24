@@ -1,3 +1,5 @@
+import type { I18nSetupPlan } from "./setup.js";
+
 export type PlanAction =
   | "CREATE"
   | "REUSE"
@@ -104,6 +106,7 @@ export interface I18nPlan {
   summary: PlanSummary;
   translations: TranslationPlan[];
   sourceChanges: SourceChangePlan[];
+  setup?: I18nSetupPlan;
   warnings: PlanWarning[];
   errors: PlanError[];
 }

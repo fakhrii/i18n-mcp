@@ -146,6 +146,11 @@ export async function internationalizeProject(
     errors.push(pe.message);
   }
 
+  if (plan.setup?.needed) {
+    projectMeta.i18nLibrary = plan.setup.library;
+    projectMeta.localeDirectory = plan.setup.localeDirectory;
+  }
+
   const planChangesCount = plan.sourceChanges.filter(
     (sc) => sc.action === "REPLACE"
   ).length;

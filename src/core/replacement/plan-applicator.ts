@@ -246,8 +246,83 @@ export async function applyI18nPlan(
     };
   }
 
-  // 7. Combine all staged files (source files + locale files)
+  // 7. Combine all staged files (setup files + source files + locale files)
   const allStagedFiles = new Map<string, string>();
+
+  // 7.1 Stage Setup Files if project requires greenfield i18n infrastructure setup
+  if (plan.setup?.needed) {
+    // Stage config & initial locale resource files
+    for (const setupFile of plan.setup.filesToCreate) {
+      if (!localeResult.stagedFiles.has(setupFile.path)) {
+        allStagedFiles.set(setupFile.path, setupFile.content);
+        originalFileContents.set(setupFile.path, "");
+      }
+    }
+
+    // Stage entry file import injection
+    if (plan.setup.entryFile && plan.setup.entryImportStatement) {
+      const entryRelPath = plan.setup.entryFile;
+      const entryAbsPath = path.join(projectRoot, entryRelPath);
+      if (await fileExists(entryAbsPath)) {
+        const currentEntry =
+          stagedSourceFiles.get(entryRelPath) ||
+          (await readTextFile(entryAbsPath)) ||
+          "";
+        if (!currentEntry.includes(plan.setup.entryImportStatement)) {
+          let updatedEntry = currentEntry;
+          const importMatches = Array.from(
+            currentEntry.matchAll(/^import\s+.*from\s+['"].*['"];?/gm)
+          );
+          if (importMatches.length > 0) {
+            const lastImport = importMatches[importMatches.length - 1]!;
+            const insertPos = (lastImport.index ?? 0) + lastImport[0].length;
+            updatedEntry =
+              currentEntry.slice(0, insertPos) +
+              `\n${plan.setup.entryImportStatement}` +
+              currentEntry.slice(insertPos);
+          } else {
+            updatedEntry = `${plan.setup.entryImportStatement}\n` + currentEntry;
+          }
+          stagedSourceFiles.set(entryRelPath, updatedEntry);
+          if (!originalFileContents.has(entryRelPath)) {
+            originalFileContents.set(entryRelPath, currentEntry);
+          }
+        }
+      }
+    }
+
+    // Stage package.json dependencies update
+    if (plan.setup.dependenciesToAdd) {
+      const pkgPath = path.join(projectRoot, "package.json");
+      if (await fileExists(pkgPath)) {
+        const rawPkg = await readTextFile(pkgPath);
+        if (rawPkg) {
+          try {
+            const pkgObj = JSON.parse(rawPkg);
+            pkgObj.dependencies = pkgObj.dependencies || {};
+            let depsAdded = false;
+            for (const [dep, ver] of Object.entries(plan.setup.dependenciesToAdd)) {
+              if (
+                !pkgObj.dependencies[dep] &&
+                (!pkgObj.devDependencies || !pkgObj.devDependencies[dep])
+              ) {
+                pkgObj.dependencies[dep] = ver;
+                depsAdded = true;
+              }
+            }
+            if (depsAdded) {
+              const updatedPkg = JSON.stringify(pkgObj, null, 2) + "\n";
+              allStagedFiles.set("package.json", updatedPkg);
+              originalFileContents.set("package.json", rawPkg);
+            }
+          } catch {
+            // Ignore parse errors on package.json
+          }
+        }
+      }
+    }
+  }
+
   for (const [file, content] of stagedSourceFiles.entries()) {
     allStagedFiles.set(file, content);
   }

@@ -10,6 +10,7 @@ export interface I18nDetection {
   sourceLocale: string;
   targetLocales: string[];
   configFile?: string;
+  needsSetup?: boolean;
 }
 
 export interface ProjectStructure {

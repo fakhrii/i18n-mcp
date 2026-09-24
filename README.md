@@ -87,6 +87,68 @@ src/
 └── utils/                    # Safe file I/O, logger (stderr safe)
 ```
 
+### `internationalize`
+End-to-end orchestration tool combining analysis, scanning, planning, modification, translation, and validation into a unified workflow.
+- **Conservative Defaults**: Runs in dry-run mode (`dryRun: true, apply: false, translate: false`) unless explicitly requested otherwise.
+- **Inputs**:
+  - `projectPath` (string, optional): Project root directory.
+  - `scope` (string[], optional): Files or directories to process.
+  - `dryRun` (boolean, optional, default `true`): Simulates execution and returns a unified diff preview.
+  - `apply` (boolean, optional, default `false`): Applies code replacements and locale additions.
+  - `translate` (boolean, optional, default `false`): Translates missing strings for target locales.
+  - `sourceLocale` (string, optional): Source locale (e.g. `en`).
+  - `targetLocales` (string[], optional): Target locales (e.g. `['fr', 'es']`).
+  - `createBackup` (boolean, optional, default `false`): Creates `.bak` files before modifying disk.
+  - `failOnWarnings` (boolean, optional, default `false`): Halts on warnings.
+- **Returns**: Complete structured report with status (`NO_CHANGES`, `PLAN_READY`, `APPLIED`, `APPLIED_WITH_WARNINGS`, `REVIEW_REQUIRED`, `FAILED`, `FAILED_VALIDATION`), scanned metrics, generated keys, unified diff, translation stats, and validation issues.
+
+---
+
+## Antigravity Agent Skill: `/internationalize`
+
+The project includes an Antigravity Workspace Skill located at [`.agents/skills/internationalize/SKILL.md`](file:///.agents/skills/internationalize/SKILL.md) (and [`.claude/skills/internationalize/SKILL.md`](file:///.claude/skills/internationalize/SKILL.md)).
+
+The skill acts as a thin agent UX layer delegating directly to the `internationalize` MCP orchestrator tool.
+
+### Supported Slash Commands
+
+```text
+# Preview internationalization across the whole project (dry-run)
+/internationalize
+
+# Preview a specific feature directory
+/internationalize src/features/auth
+
+# Preview a single screen or component
+/internationalize src/features/auth/LoginScreen.tsx
+
+# Preview multiple paths
+/internationalize src/features/auth src/features/profile
+
+# Apply changes directly
+/internationalize src/features/auth --apply
+
+# Apply changes and generate French and Spanish translations
+/internationalize src/features/auth --apply --translate --target-locales=fr,es
+```
+
+### Supported Natural Language Invocations
+
+- *"Internationalize this screen"* — infers scope from the active editor screen file.
+- *"Internationalize the auth module"* — scopes to `src/features/auth`.
+- *"Internationalize this feature"* — infers feature directory from active editor file.
+- *"Find and replace all hardcoded user-facing strings in this folder"* — scopes to the active directory.
+- *"Internationalize checkout and translate to French and Arabic"* — scopes to `src/features/checkout`, sets `translate: true` and `targetLocales: ['fr', 'ar']`.
+
+### Interactive Safety Workflow
+
+1. Developer invokes `/internationalize src/features/auth`.
+2. Agent executes MCP `internationalize({ scope: ['src/features/auth'], dryRun: true, apply: false })`.
+3. Agent outputs a structured summary table, candidate translation keys, and unified diff preview.
+4. Agent prompts: *"The plan is ready. No files have been modified. To apply these changes, run `/internationalize src/features/auth --apply` or reply **apply**."*
+5. Developer replies *"apply"*.
+6. Agent applies changes, updates locale JSON files, runs translations (if requested), validates results, and prints the final report.
+
 ---
 
 ## CLI Usage
