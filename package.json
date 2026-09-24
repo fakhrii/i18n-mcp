@@ -1,7 +1,7 @@
 {
   "name": "i18n-mcp",
   "version": "0.1.1",
-  "description": "Production-quality MCP server for automatic internationalization of React Native projects",
+  "description": "Production-quality MCP server for automated internationalization across React Native, React (web), Next.js, and Flutter projects",
   "type": "module",
   "bin": {
     "i18n-mcp": "./dist/cli/index.js"
@@ -19,10 +19,14 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "react-native",
     "i18n",
-    "i18next",
-    "internationalization"
+    "internationalization",
+    "react-native",
+    "react",
+    "nextjs",
+    "flutter",
+    "dart",
+    "i18next"
   ],
   "author": "",
   "license": "MIT",

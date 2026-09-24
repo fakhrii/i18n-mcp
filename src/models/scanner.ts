@@ -35,6 +35,7 @@ export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
 export type SemanticRole = "CONFIRMED_UI" | "CONFIRMED_TECHNICAL" | "AMBIGUOUS";
 
 export interface DetectedString {
+  id?: string;
   file: string;
   line: number;
   column: number;
@@ -72,6 +73,7 @@ export interface ScanResult {
   userFacingCount: number;
   technicalCount: number;
   ambiguousCount?: number;
+  ambiguousItems?: DetectedString[];
   items: DetectedString[];
   durationMs: number;
 }

@@ -58,12 +58,18 @@ export const internationalizeSchema = {
     .array(z.string())
     .optional()
     .describe("Optional list of namespaces to limit planning and translation to."),
+  candidateDecisions: z
+    .record(z.boolean())
+    .optional()
+    .describe(
+      "Optional map of candidate ID (or text) to boolean decision (true = include as user-facing, false = skip as technical) for resolving ambiguous strings."
+    ),
 };
 
 export function registerInternationalizeTool(server: McpServer): void {
   server.tool(
     "internationalize",
-    "End-to-end orchestration tool for React Native i18n migration. Runs analyze -> scan -> plan -> apply -> translate -> validate with conservative defaults and complete structured reporting.",
+    "End-to-end orchestration tool for i18n migration across React Native, React (web), Next.js, and Flutter projects. Runs analyze -> scan -> plan -> apply -> translate -> validate with conservative defaults and complete structured reporting.",
     internationalizeSchema,
     async ({
       projectPath,
@@ -78,6 +84,7 @@ export function registerInternationalizeTool(server: McpServer): void {
       include,
       exclude,
       namespaces,
+      candidateDecisions,
     }) => {
       logger.info(
         `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false})`
@@ -96,6 +103,7 @@ export function registerInternationalizeTool(server: McpServer): void {
           include,
           exclude,
           namespaces,
+          candidateDecisions,
         });
 
         const summaryText = [

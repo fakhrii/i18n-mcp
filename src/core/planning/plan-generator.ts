@@ -255,6 +255,32 @@ export async function generateI18nPlan(
   for (const [rawText, items] of groupedByText.entries()) {
     const primaryItem = items[0]!;
 
+    // Check if all occurrences are explicitly rejected by candidateDecisions
+    const allRejected = items.every((item) => {
+      const candidateId = item.id || `${item.file}:${item.line}:${item.column}`;
+      const decision =
+        input?.candidateDecisions?.[candidateId] ??
+        (item.id ? input?.candidateDecisions?.[item.id] : undefined) ??
+        input?.candidateDecisions?.[item.text] ??
+        input?.candidateDecisions?.[item.rawText];
+      return decision === false;
+    });
+
+    if (allRejected) {
+      for (const item of items) {
+        const fileCtx =
+          fileContexts.get(item.file) ||
+          analyzeFileTranslationContext("", primaryAccessPattern);
+        const sc = planSourceChange(item, "common", "SKIP", fileCtx, {
+          confidenceThreshold,
+          includeAmbiguous: input?.includeAmbiguous,
+          candidateDecisions: input?.candidateDecisions,
+        });
+        sourceChanges.push(sc);
+      }
+      continue;
+    }
+
     // Resolve namespace:
     // Priority: common candidate -> feature folder / mapping -> file bound ns -> fallback
     let preferredNs = primaryItem.suggestedNamespace || "common";
@@ -362,6 +388,7 @@ export async function generateI18nPlan(
       const sc = planSourceChange(item, finalNamespace, finalKey, fileCtx, {
         confidenceThreshold,
         includeAmbiguous: input?.includeAmbiguous,
+        candidateDecisions: input?.candidateDecisions,
       });
 
       sourceChanges.push(sc);

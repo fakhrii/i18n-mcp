@@ -47,6 +47,12 @@ export const generateI18nPlanSchema = {
     .optional()
     .default(false)
     .describe("Whether to include ambiguous low-confidence candidates in the plan for review."),
+  candidateDecisions: z
+    .record(z.boolean())
+    .optional()
+    .describe(
+      "Optional map of candidate ID (or text) to boolean decision (true = include as user-facing, false = skip as technical) for resolving ambiguous strings."
+    ),
 };
 
 export function registerGenerateI18nPlanTool(server: McpServer): void {
@@ -64,6 +70,7 @@ export function registerGenerateI18nPlanTool(server: McpServer): void {
       targetLocales,
       confidenceThreshold,
       includeAmbiguous,
+      candidateDecisions,
     }) => {
       const targetPath = pathAlias || projectPath;
       logger.info(`Invoking generate_i18n_plan for path: ${targetPath || "."}`);
@@ -77,6 +84,7 @@ export function registerGenerateI18nPlanTool(server: McpServer): void {
           targetLocales,
           confidenceThreshold: confidenceThreshold ?? 0.7,
           includeAmbiguous: includeAmbiguous ?? false,
+          candidateDecisions,
         });
 
         // Generate concise human-readable summary

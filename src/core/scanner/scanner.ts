@@ -30,6 +30,7 @@ export async function scanHardcodedTexts(
   logger.info(`Resolved ${targetFiles.length} files to scan in scope`);
 
   const items: DetectedString[] = [];
+  const ambiguousItems: DetectedString[] = [];
   let userFacingCount = 0;
   let technicalCount = 0;
   let ambiguousCount = 0;
@@ -53,6 +54,7 @@ export async function scanHardcodedTexts(
       items.push(item);
       if (item.semanticRole === "AMBIGUOUS") {
         ambiguousCount++;
+        ambiguousItems.push(item);
       }
       if (isUserFacingClassification(item.classification)) {
         userFacingCount++;
@@ -72,6 +74,7 @@ export async function scanHardcodedTexts(
     userFacingCount,
     technicalCount,
     ambiguousCount,
+    ambiguousItems: ambiguousItems.length > 0 ? ambiguousItems : undefined,
     items,
     durationMs,
   };

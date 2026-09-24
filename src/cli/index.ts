@@ -8,8 +8,8 @@ const program = new Command();
 
 program
   .name("i18n-mcp")
-  .description("CLI and developer tool for React Native automatic internationalization")
-  .version("0.1.0");
+  .description("CLI and developer tool for automated internationalization across React Native, React, Next.js, and Flutter")
+  .version("0.1.1");
 
 program
   .command("serve")
@@ -33,7 +33,7 @@ program
         return;
       }
 
-      console.log("\n--- React Native i18n Analysis ---\n");
+      console.log("\n--- Project i18n Analysis ---\n");
       console.log(`Framework:       ${result.framework}`);
       console.log(`Language:        ${result.language}`);
       console.log(`Package Manager: ${result.packageManager}`);
@@ -211,7 +211,7 @@ program
           return;
         }
 
-        console.log("\n--- React Native i18n Migration Plan ---\n");
+        console.log("\n--- i18n Migration Plan ---\n");
         console.log(`Project:           ${plan.project.root} (${plan.project.framework}, ${plan.project.library || "none"})`);
         console.log(`Locales:           source=${plan.locales.source}, targets=[${plan.locales.targets.join(", ")}]`);
         console.log("\nSummary:");
@@ -316,7 +316,7 @@ program
           return;
         }
 
-        console.log("\n--- React Native i18n Plan Application ---\n");
+        console.log("\n--- i18n Plan Application ---\n");
         console.log(`Status:                  ${result.success ? (result.dryRun ? "Dry-run SUCCESS" : "APPLIED") : "FAILED"}`);
         console.log(`Dry-run:                 ${result.dryRun}`);
         console.log(`Files Modified:          ${result.filesChanged.length}`);
@@ -405,7 +405,7 @@ program
           return;
         }
 
-        console.log("\n--- React Native i18n Translation ---\n");
+        console.log("\n--- i18n Translation ---\n");
         console.log(`Translated:      ${result.translated}`);
         console.log(`Unchanged:       ${result.unchanged}`);
         console.log(`Pending:         ${result.pending}`);
@@ -485,7 +485,7 @@ program
           return;
         }
 
-        console.log("\n--- React Native i18n Validation ---\n");
+        console.log("\n--- i18n Validation ---\n");
         console.log(`Valid:           ${result.valid ? "YES" : "NO"}`);
         console.log(`Errors:          ${result.errorCount}`);
         console.log(`Warnings:        ${result.warningCount}`);
@@ -580,7 +580,7 @@ program
           return;
         }
 
-        console.log("\n--- React Native Automated Internationalization ---\n");
+        console.log("\n--- Automated Internationalization ---\n");
         console.log(`Status:                  ${result.status}`);
         console.log(`Success:                 ${result.success}`);
         console.log(`Framework:               ${result.project.framework || "unknown"}`);

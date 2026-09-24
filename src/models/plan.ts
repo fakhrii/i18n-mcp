@@ -121,4 +121,5 @@ export interface GenerateI18nPlanInput {
   targetLocales?: string[];
   confidenceThreshold?: number;
   includeAmbiguous?: boolean;
+  candidateDecisions?: Record<string, boolean>;
 }

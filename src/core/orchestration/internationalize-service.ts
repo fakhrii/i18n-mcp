@@ -124,6 +124,7 @@ export async function internationalizeProject(
       exclude: input.exclude,
       sourceLocale,
       targetLocales,
+      candidateDecisions: input.candidateDecisions,
     });
   } catch (err: unknown) {
     return {

@@ -115,10 +115,15 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       config
     );
 
+    const startLine = line + 1;
+    const startCol = character + 1;
+    const candidateId = `${filePath}:${startLine}:${startCol}`;
+
     results.push({
+      id: candidateId,
       file: filePath,
-      line: line + 1,
-      column: character + 1,
+      line: startLine,
+      column: startCol,
       endLine: endPos.line + 1,
       endColumn: endPos.character + 1,
       text: trimmed,
