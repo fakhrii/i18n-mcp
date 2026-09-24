@@ -37,6 +37,8 @@ import {
   toPosixPath,
 } from "../../utils/file-system.js";
 import { flattenNestedObject } from "../../utils/nested-json.js";
+import { planI18nSetup } from "../setup/setup-planner.js";
+import type { I18nSetupPlan } from "../../models/setup.js";
 import { logger } from "../../utils/logger.js";
 
 /**
@@ -146,23 +148,35 @@ export async function generateI18nPlan(
     minConfidence: 0.0, // Scan all to classify properly into REPLACE vs REVIEW
   });
 
-  // 4. Load existing translations
+  // 4. Plan Setup if project has no i18n infrastructure or missing locale directory
+  let setupPlan: I18nSetupPlan | undefined;
+  let effectiveLocaleDir = analysis.i18n.localeDirectory;
+
+  if (analysis.i18n.needsSetup || !effectiveLocaleDir) {
+    setupPlan = await planI18nSetup(projectRoot, analysis, {
+      sourceLocale,
+      targetLocales,
+    });
+    effectiveLocaleDir = setupPlan.localeDirectory;
+  }
+
+  // 5. Load existing translations
   const existingSource = await loadExistingTranslations(
     projectRoot,
-    analysis.i18n.localeDirectory,
+    effectiveLocaleDir,
     sourceLocale
   );
 
   const { translations: targetLocaleTranslations, isSubdirStructure } =
     await loadTargetLocaleTranslations(
       projectRoot,
-      analysis.i18n.localeDirectory,
+      effectiveLocaleDir,
       targetLocales
     );
 
   const localeContext: LocalePlanningContext = {
     projectRoot,
-    localeDirectory: analysis.i18n.localeDirectory,
+    localeDirectory: effectiveLocaleDir,
     sourceLocale,
     targetLocales,
     isSubdirStructure,
@@ -240,6 +254,32 @@ export async function generateI18nPlan(
   // 8. Process each unique detected text group
   for (const [rawText, items] of groupedByText.entries()) {
     const primaryItem = items[0]!;
+
+    // Check if all occurrences are explicitly rejected by candidateDecisions
+    const allRejected = items.every((item) => {
+      const candidateId = item.id || `${item.file}:${item.line}:${item.column}`;
+      const decision =
+        input?.candidateDecisions?.[candidateId] ??
+        (item.id ? input?.candidateDecisions?.[item.id] : undefined) ??
+        input?.candidateDecisions?.[item.text] ??
+        input?.candidateDecisions?.[item.rawText];
+      return decision === false;
+    });
+
+    if (allRejected) {
+      for (const item of items) {
+        const fileCtx =
+          fileContexts.get(item.file) ||
+          analyzeFileTranslationContext("", primaryAccessPattern);
+        const sc = planSourceChange(item, "common", "SKIP", fileCtx, {
+          confidenceThreshold,
+          includeAmbiguous: input?.includeAmbiguous,
+          candidateDecisions: input?.candidateDecisions,
+        });
+        sourceChanges.push(sc);
+      }
+      continue;
+    }
 
     // Resolve namespace:
     // Priority: common candidate -> feature folder / mapping -> file bound ns -> fallback
@@ -348,6 +388,7 @@ export async function generateI18nPlan(
       const sc = planSourceChange(item, finalNamespace, finalKey, fileCtx, {
         confidenceThreshold,
         includeAmbiguous: input?.includeAmbiguous,
+        candidateDecisions: input?.candidateDecisions,
       });
 
       sourceChanges.push(sc);
@@ -450,7 +491,7 @@ export async function generateI18nPlan(
     project: {
       root: toPosixPath(projectRoot),
       framework: analysis.framework,
-      library: analysis.i18n.library,
+      library: setupPlan ? "react-i18next" : analysis.i18n.library,
     },
     scope: {
       include: input?.include || [],
@@ -463,6 +504,7 @@ export async function generateI18nPlan(
     summary,
     translations,
     sourceChanges,
+    setup: setupPlan,
     warnings,
     errors,
   };

@@ -30,8 +30,10 @@ export async function scanHardcodedTexts(
   logger.info(`Resolved ${targetFiles.length} files to scan in scope`);
 
   const items: DetectedString[] = [];
+  const ambiguousItems: DetectedString[] = [];
   let userFacingCount = 0;
   let technicalCount = 0;
+  let ambiguousCount = 0;
 
   for (const relFile of targetFiles) {
     const absFile = path.join(projectRoot, relFile);
@@ -45,10 +47,15 @@ export async function scanHardcodedTexts(
       config,
       onlyUserFacing: options?.onlyUserFacing ?? true,
       minConfidence: options?.minConfidence ?? 0.0,
+      ambiguousOnly: options?.ambiguousOnly ?? false,
     });
 
     for (const item of detected) {
       items.push(item);
+      if (item.semanticRole === "AMBIGUOUS") {
+        ambiguousCount++;
+        ambiguousItems.push(item);
+      }
       if (isUserFacingClassification(item.classification)) {
         userFacingCount++;
       } else {
@@ -59,13 +66,15 @@ export async function scanHardcodedTexts(
 
   const durationMs = Date.now() - startTime;
   logger.info(
-    `Scan complete: ${items.length} strings detected (${userFacingCount} user-facing, ${technicalCount} technical) in ${durationMs}ms`
+    `Scan complete: ${items.length} strings detected (${userFacingCount} user-facing, ${technicalCount} technical, ${ambiguousCount} ambiguous) in ${durationMs}ms`
   );
 
   return {
     total: items.length,
     userFacingCount,
     technicalCount,
+    ambiguousCount,
+    ambiguousItems: ambiguousItems.length > 0 ? ambiguousItems : undefined,
     items,
     durationMs,
   };

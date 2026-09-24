@@ -23,6 +23,7 @@ export interface InternationalizeInput {
   include?: string[];
   exclude?: string[];
   namespaces?: string[];
+  candidateDecisions?: Record<string, boolean>;
 }
 
 export interface InternationalizeResult {

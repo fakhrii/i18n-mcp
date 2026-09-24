@@ -168,12 +168,43 @@ export function planSourceChange(
   options?: {
     confidenceThreshold?: number;
     includeAmbiguous?: boolean;
+    candidateDecisions?: Record<string, boolean>;
   }
 ): SourceChangePlan {
   const threshold = options?.confidenceThreshold ?? 0.7;
 
+  // Check if explicit decision was provided by Agent / user
+  const candidateId = item.id || `${item.file}:${item.line}:${item.column}`;
+  const decision =
+    options?.candidateDecisions?.[candidateId] ??
+    (item.id ? options?.candidateDecisions?.[item.id] : undefined) ??
+    options?.candidateDecisions?.[item.text] ??
+    options?.candidateDecisions?.[item.rawText];
+
+  if (decision === false) {
+    return {
+      action: "SKIP",
+      file: item.file,
+      location: {
+        line: item.line,
+        column: item.column,
+        endLine: item.endLine,
+        endColumn: item.endColumn,
+      },
+      source: item.rawText || item.text,
+      replacement: item.rawText || item.text,
+      namespace,
+      key,
+      confidence: item.confidence,
+      reason: "Explicitly skipped by Agent / user decision",
+      status: "SUPPORTED",
+    };
+  }
+
+  const isExplicitlyApproved = decision === true || options?.includeAmbiguous === true;
+
   // Check for ambiguous or low-confidence strings
-  if (item.confidence < threshold) {
+  if (item.confidence < threshold && !isExplicitlyApproved) {
     return {
       action: "REVIEW",
       file: item.file,

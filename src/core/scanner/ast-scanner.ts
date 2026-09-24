@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { AstContextType, DetectedString } from "../../models/scanner.js";
-import { classifyString } from "../classifier/classifier.js";
+import { classifyString, computeSemanticRole } from "../classifier/classifier.js";
 import { generateSemanticKey } from "../keys/key-generator.js";
 import { resolveSuggestedNamespace } from "../namespace/namespace-resolver.js";
 import type { I18nMcpConfig } from "../../models/config.js";
@@ -12,6 +12,7 @@ export interface AstScanOptions {
   config?: I18nMcpConfig | null;
   onlyUserFacing?: boolean;
   minConfidence?: number;
+  ambiguousOnly?: boolean;
 }
 
 export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
@@ -22,6 +23,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     config,
     onlyUserFacing = true,
     minConfidence = 0.0,
+    ambiguousOnly = false,
   } = options;
 
   const results: DetectedString[] = [];
@@ -81,6 +83,17 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       isStyleContext: isInsideStyleContext(node),
     });
 
+    const semanticRole =
+      classificationResult.semanticRole ??
+      computeSemanticRole(
+        classificationResult.isUserFacing,
+        classificationResult.confidence
+      );
+
+    if (ambiguousOnly && semanticRole !== "AMBIGUOUS") {
+      return;
+    }
+
     if (onlyUserFacing && !classificationResult.isUserFacing) {
       return;
     }
@@ -102,10 +115,15 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       config
     );
 
+    const startLine = line + 1;
+    const startCol = character + 1;
+    const candidateId = `${filePath}:${startLine}:${startCol}`;
+
     results.push({
+      id: candidateId,
       file: filePath,
-      line: line + 1,
-      column: character + 1,
+      line: startLine,
+      column: startCol,
       endLine: endPos.line + 1,
       endColumn: endPos.character + 1,
       text: trimmed,
@@ -114,6 +132,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       classification: classificationResult.classification,
       confidence: classificationResult.confidence,
       confidenceLevel: classificationResult.confidenceLevel,
+      semanticRole,
       suggestedNamespace,
       suggestedKey,
       reason: classificationResult.reason,

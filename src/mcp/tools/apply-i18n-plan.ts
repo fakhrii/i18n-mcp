@@ -44,7 +44,7 @@ export const applyI18nPlanSchema = {
 export function registerApplyI18nPlanTool(server: McpServer): void {
   server.tool(
     "apply_i18n_plan",
-    "Safely and atomically apply an approved i18n migration plan to the React Native project. Performs source replacements, hook/import insertions, and locale JSON updates with stale plan protection and optional dry-run.",
+    "Safely and atomically apply an approved i18n migration plan to the project (React Native, React, Next.js, Flutter). Performs source replacements, hook/import insertions, and locale JSON updates with stale plan protection and optional dry-run.",
     applyI18nPlanSchema,
     async ({
       plan,

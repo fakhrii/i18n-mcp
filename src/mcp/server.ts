@@ -14,7 +14,7 @@ export function createI18nMcpServer(): McpServer {
 }
 
 export async function startStdioServer(): Promise<void> {
-  logger.info("Starting React Native i18n MCP Server on stdio...");
+  logger.info("Starting i18n MCP Server on stdio (React Native, React, Next.js, Flutter)...");
   const server = createI18nMcpServer();
   const transport = new StdioServerTransport();
 
@@ -31,7 +31,7 @@ export async function startStdioServer(): Promise<void> {
   });
 
   await server.connect(transport);
-  logger.info("React Native i18n MCP Server running and ready for requests.");
+  logger.info("i18n MCP Server running and ready for requests.");
 }
 
 import { fileURLToPath } from "node:url";

@@ -25,6 +25,20 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
   const devDependencies = packageJson?.devDependencies ?? {};
   const allDeps = { ...devDependencies, ...dependencies };
 
+  // 0. Check for Flutter (pubspec.yaml)
+  const isFlutter = await fileExists(path.join(projectRoot, "pubspec.yaml"));
+  if (isFlutter) {
+    return {
+      framework: "flutter",
+      language: "dart",
+      packageManager: "pub",
+      packageName: packageJson?.name,
+      packageVersion: packageJson?.version,
+      dependencies,
+      devDependencies,
+    };
+  }
+
   // 1. Framework detection
   let framework: FrameworkType = "unknown";
   if (
@@ -33,6 +47,8 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
     Object.keys(allDeps).some((d) => d.startsWith("@react-native/"))
   ) {
     framework = "react-native";
+  } else if ("next" in allDeps) {
+    framework = "nextjs";
   } else if ("react" in allDeps || "react-dom" in allDeps) {
     framework = "react";
   }

@@ -37,12 +37,19 @@ export const scanHardcodedTextsSchema = {
     .optional()
     .default(0.0)
     .describe("Minimum confidence score threshold (0.0 to 1.0) for returned items."),
+  ambiguousOnly: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Whether to return only ambiguous candidates requiring agent/human evaluation (default: false)."
+    ),
 };
 
 export function registerScanHardcodedTextsTool(server: McpServer): void {
   server.tool(
     "scan_hardcoded_texts",
-    "Scan a React Native project or requested scope for hardcoded strings using AST analysis. Returns detected strings with source locations, AST context, classification, confidence score, suggested key and namespace, without modifying any files.",
+    "Scan a React Native project (as well as React, Next.js, and Flutter) or requested scope for hardcoded strings using AST analysis. Returns detected strings with source locations, AST context, classification, confidence score, semantic role, suggested key and namespace, without modifying any files.",
     scanHardcodedTextsSchema,
     async ({
       projectPath,
@@ -51,6 +58,7 @@ export function registerScanHardcodedTextsTool(server: McpServer): void {
       exclude,
       onlyUserFacing,
       minConfidence,
+      ambiguousOnly,
     }) => {
       logger.info(`Invoking scan_hardcoded_texts for path: ${projectPath || "."}`);
       try {
@@ -60,6 +68,7 @@ export function registerScanHardcodedTextsTool(server: McpServer): void {
           exclude,
           onlyUserFacing: onlyUserFacing ?? true,
           minConfidence: minConfidence ?? 0.0,
+          ambiguousOnly: ambiguousOnly ?? false,
         });
 
         return {

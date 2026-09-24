@@ -124,6 +124,7 @@ export async function internationalizeProject(
       exclude: input.exclude,
       sourceLocale,
       targetLocales,
+      candidateDecisions: input.candidateDecisions,
     });
   } catch (err: unknown) {
     return {
@@ -144,6 +145,11 @@ export async function internationalizeProject(
 
   for (const pe of plan.errors) {
     errors.push(pe.message);
+  }
+
+  if (plan.setup?.needed) {
+    projectMeta.i18nLibrary = plan.setup.library;
+    projectMeta.localeDirectory = plan.setup.localeDirectory;
   }
 
   const planChangesCount = plan.sourceChanges.filter(

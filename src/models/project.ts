@@ -1,7 +1,14 @@
-export type FrameworkType = "react-native" | "react" | "unknown";
-export type LanguageType = "typescript" | "javascript";
-export type PackageManagerType = "npm" | "yarn" | "pnpm" | "bun" | "unknown";
-export type I18nLibraryType = "react-i18next" | "i18next" | "custom" | "none";
+export type FrameworkType = "react-native" | "react" | "nextjs" | "flutter" | "unknown";
+export type LanguageType = "typescript" | "javascript" | "dart";
+export type PackageManagerType = "npm" | "yarn" | "pnpm" | "bun" | "pub" | "unknown";
+export type I18nLibraryType =
+  | "react-i18next"
+  | "i18next"
+  | "next-intl"
+  | "flutter_localizations"
+  | "easy_localization"
+  | "custom"
+  | "none";
 
 export interface I18nDetection {
   library: I18nLibraryType;
@@ -10,6 +17,7 @@ export interface I18nDetection {
   sourceLocale: string;
   targetLocales: string[];
   configFile?: string;
+  needsSetup?: boolean;
 }
 
 export interface ProjectStructure {
