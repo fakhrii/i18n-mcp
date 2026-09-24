@@ -32,6 +32,8 @@ export type TextClassification =
 
 export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
 
+export type SemanticRole = "CONFIRMED_UI" | "CONFIRMED_TECHNICAL" | "AMBIGUOUS";
+
 export interface DetectedString {
   file: string;
   line: number;
@@ -44,6 +46,7 @@ export interface DetectedString {
   classification: TextClassification;
   confidence: number;
   confidenceLevel: ConfidenceLevel;
+  semanticRole?: SemanticRole;
   suggestedNamespace: string;
   suggestedKey: string;
   reason: string;
@@ -61,12 +64,14 @@ export interface ScanOptions {
   exclude?: string[];
   onlyUserFacing?: boolean;
   minConfidence?: number;
+  ambiguousOnly?: boolean;
 }
 
 export interface ScanResult {
   total: number;
   userFacingCount: number;
   technicalCount: number;
+  ambiguousCount?: number;
   items: DetectedString[];
   durationMs: number;
 }

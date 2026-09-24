@@ -1,6 +1,7 @@
 import type {
   AstContextType,
   ConfidenceLevel,
+  SemanticRole,
   TextClassification,
 } from "../../models/scanner.js";
 
@@ -8,6 +9,7 @@ export interface ClassificationResult {
   classification: TextClassification;
   confidence: number;
   confidenceLevel: ConfidenceLevel;
+  semanticRole?: SemanticRole;
   reason: string;
   isUserFacing: boolean;
 }
@@ -34,6 +36,13 @@ export function getConfidenceLevel(confidence: number): ConfidenceLevel {
   if (confidence >= 0.85) return "HIGH";
   if (confidence >= 0.5) return "MEDIUM";
   return "LOW";
+}
+
+export function computeSemanticRole(isUserFacing: boolean, confidence: number): SemanticRole {
+  if (confidence >= 0.85) {
+    return isUserFacing ? "CONFIRMED_UI" : "CONFIRMED_TECHNICAL";
+  }
+  return "AMBIGUOUS";
 }
 
 // Regex patterns for technical values
