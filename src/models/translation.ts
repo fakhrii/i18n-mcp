@@ -4,6 +4,7 @@ export interface TranslateI18nInput {
   targetLocales?: string[];
   namespaces?: string[];
   dryRun?: boolean;
+  providedTranslations?: Record<string, any>;
 }
 
 export type TranslationItemStatus =
@@ -28,6 +29,12 @@ export interface TranslationServiceResult {
   review: number;
   filesModified: string[];
   items: TranslationItemResult[];
+  pendingItems?: Array<{
+    key: string;
+    sourceText: string;
+    locale: string;
+    namespace?: string;
+  }>;
   errors: string[];
   warnings: string[];
 }

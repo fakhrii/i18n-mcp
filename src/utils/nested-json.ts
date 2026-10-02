@@ -170,3 +170,45 @@ export function flattenNestedObject(
 
   return result;
 }
+
+/**
+ * Deletes a property at a given key path (direct or dot-separated).
+ * Returns true if the property existed and was deleted.
+ */
+export function deleteNestedValue(
+  obj: Record<string, unknown> | undefined | null,
+  keyPath: string
+): boolean {
+  if (!obj || typeof obj !== "object") {
+    return false;
+  }
+
+  // 1. Direct property check
+  const directKey = findMatchingPropertyKey(obj, keyPath);
+  if (directKey !== undefined) {
+    delete obj[directKey];
+    return true;
+  }
+
+  // 2. Dot-separated path traversal
+  const parts = keyPath.split(".");
+  let current: any = obj;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i]!;
+    const matchedKey = findMatchingPropertyKey(current, part);
+    if (!matchedKey || typeof current[matchedKey] !== "object" || current[matchedKey] === null) {
+      return false;
+    }
+    current = current[matchedKey];
+  }
+
+  const lastPart = parts[parts.length - 1]!;
+  const matchedLastKey = findMatchingPropertyKey(current, lastPart);
+  if (matchedLastKey !== undefined) {
+    delete current[matchedLastKey];
+    return true;
+  }
+
+  return false;
+}

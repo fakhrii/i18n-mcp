@@ -6,6 +6,8 @@ import type {
 } from "../../models/validation.js";
 import { analyzeProject } from "../discovery/project-analyzer.js";
 import { scanHardcodedTexts } from "../scanner/scanner.js";
+import { resolveProjectFiles } from "../scope/scope-resolver.js";
+import { detectDeadKeys, pruneUnusedKeys } from "./dead-key-detector.js";
 import {
   dirExists,
   fileExists,
@@ -363,6 +365,42 @@ export async function validateI18n(
     }
   }
 
+  // 5. Optionally check or prune unused / dead keys
+  let unusedKeysCount = 0;
+  let prunedKeysCount = 0;
+
+  if (input.checkUnusedKeys || input.pruneUnusedKeys) {
+    try {
+      const sourceFiles = await resolveProjectFiles(projectRoot, { scope: input.scope });
+      const deadResult = await detectDeadKeys({
+        projectRoot,
+        sourceFiles,
+        sourceTranslations,
+      });
+
+      unusedKeysCount = deadResult.unusedKeys.length;
+      for (const u of deadResult.unusedKeys) {
+        issues.push({
+          type: "UNUSED_KEY",
+          severity: "warning",
+          namespace: u.namespace,
+          key: u.key,
+          message: `Translation key '${u.namespace}:${u.key}' is defined in locale catalog but not referenced in source code.`,
+        });
+      }
+
+      if (input.pruneUnusedKeys && deadResult.unusedKeys.length > 0) {
+        prunedKeysCount = await pruneUnusedKeys({
+          projectRoot,
+          localeDirectory: localeDir,
+          unusedKeys: deadResult.unusedKeys,
+        });
+      }
+    } catch (err: unknown) {
+      logger.warn(`Unused key check failed: ${String(err)}`);
+    }
+  }
+
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const warningCount = issues.filter((i) => i.severity === "warning").length;
 
@@ -375,6 +413,9 @@ export async function validateI18n(
       totalKeys,
       localesChecked: allLocalesToCheck,
       namespacesChecked: Array.from(namespacesCheckedSet).sort(),
+      ...(input.checkUnusedKeys || input.pruneUnusedKeys
+        ? { unusedKeysCount, prunedKeysCount }
+        : {}),
     },
   };
 }

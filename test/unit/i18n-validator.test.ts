@@ -135,4 +135,36 @@ describe("i18n Validator Unit Tests", () => {
     const hardcodedIssues = res.issues.filter((i) => i.type === "HARDCODED_STRING");
     expect(hardcodedIssues.length).toBeGreaterThan(0);
   });
+
+  it("detects UNUSED_KEY and prunes dead keys when enabled", async () => {
+    // Add a dead key to en/auth.json
+    const enAuthPath = path.join(sandboxDir, "src/locales/en/auth.json");
+    const enAuth = JSON.parse(await fs.readFile(enAuthPath, "utf8"));
+    enAuth.UNUSED_SIGNIN_PROMPT = "Old sign in prompt";
+    await fs.writeFile(enAuthPath, JSON.stringify(enAuth, null, 2), "utf8");
+
+    // 1. Check with checkUnusedKeys: true
+    const checkRes = await validateI18n({
+      projectPath: sandboxDir,
+      checkUnusedKeys: true,
+      scope: ["src/features/auth"],
+    });
+
+    const unusedIssue = checkRes.issues.find(
+      (i) => i.type === "UNUSED_KEY" && i.key === "UNUSED_SIGNIN_PROMPT"
+    );
+    expect(unusedIssue).toBeDefined();
+    expect(checkRes.summary.unusedKeysCount).toBeGreaterThanOrEqual(1);
+
+    // 2. Prune with pruneUnusedKeys: true
+    const pruneRes = await validateI18n({
+      projectPath: sandboxDir,
+      pruneUnusedKeys: true,
+      scope: ["src/features/auth"],
+    });
+
+    expect(pruneRes.summary.prunedKeysCount).toBeGreaterThanOrEqual(1);
+    const updatedEnAuth = JSON.parse(await fs.readFile(enAuthPath, "utf8"));
+    expect(updatedEnAuth.UNUSED_SIGNIN_PROMPT).toBeUndefined();
+  });
 });

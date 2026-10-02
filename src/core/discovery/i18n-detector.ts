@@ -19,6 +19,8 @@ import {
 const COMMON_LOCALE_DIRS = [
   "src/locales",
   "locales",
+  "lib/l10n",
+  "l10n",
   "src/assets/locales",
   "assets/locales",
   "src/translations",
@@ -272,7 +274,12 @@ export async function detectI18n(
       // Check for single file per locale: locales/<locale>.json
       const files = await listFiles(fullLocalePath);
       for (const f of files) {
-        if (f.endsWith(".json")) {
+        if (f.endsWith(".arb")) {
+          const rawName = path.basename(f, ".arb");
+          const localeName = rawName.replace(/^(app_|intl_)/, "") || rawName;
+          detectedLocales.push(localeName);
+          namespacesSet.add(rawName);
+        } else if (f.endsWith(".json")) {
           const localeName = path.basename(f, ".json");
           detectedLocales.push(localeName);
           const jsonContent = await readJsonFile<Record<string, unknown>>(

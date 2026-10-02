@@ -35,6 +35,57 @@ export interface TranslateI18nOptions {
 }
 
 /**
+ * Looks up an agent- or caller-provided translation across supported key structures:
+ * 1. Nested namespace: provided[locale][namespace][key]
+ * 2. Colon-prefixed compound key: provided[locale]['namespace:key']
+ * 3. Dot-prefixed compound key: provided[locale]['namespace.key']
+ * 4. Flat key: provided[locale][key]
+ */
+export function lookupProvidedTranslation(
+  provided: Record<string, any> | undefined,
+  locale: string,
+  namespace: string,
+  key: string
+): string | undefined {
+  if (!provided || typeof provided !== "object") return undefined;
+
+  const localeData =
+    provided[locale] ||
+    provided[locale.toLowerCase()] ||
+    provided[locale.slice(0, 2).toLowerCase()];
+
+  if (!localeData || typeof localeData !== "object") return undefined;
+
+  // 1. Nested namespace: provided[locale][namespace][key]
+  if (
+    typeof localeData[namespace] === "object" &&
+    localeData[namespace] !== null &&
+    typeof localeData[namespace][key] === "string"
+  ) {
+    return localeData[namespace][key];
+  }
+
+  // 2. Colon-prefixed compound key: provided[locale]['namespace:key']
+  const colonKey = `${namespace}:${key}`;
+  if (typeof localeData[colonKey] === "string") {
+    return localeData[colonKey];
+  }
+
+  // 3. Dot-prefixed compound key: provided[locale]['namespace.key']
+  const dotKey = `${namespace}.${key}`;
+  if (typeof localeData[dotKey] === "string") {
+    return localeData[dotKey];
+  }
+
+  // 4. Flat key: provided[locale][key]
+  if (typeof localeData[key] === "string") {
+    return localeData[key];
+  }
+
+  return undefined;
+}
+
+/**
  * Translates missing keys across target locales without overwriting existing translations.
  */
 export async function translateI18n(
@@ -46,6 +97,12 @@ export async function translateI18n(
   const warnings: string[] = [];
   const errors: string[] = [];
   const items: TranslationItemResult[] = [];
+  const pendingItems: Array<{
+    key: string;
+    sourceText: string;
+    locale: string;
+    namespace?: string;
+  }> = [];
   const filesModifiedSet = new Set<string>();
 
   logger.info(`Running translation service for ${projectRoot} (dryRun=${dryRun})`);
@@ -216,6 +273,29 @@ export async function translateI18n(
             continue;
           }
 
+          // Check providedTranslations first
+          const providedText = lookupProvidedTranslation(
+            input.providedTranslations,
+            targetLocale,
+            namespace,
+            key
+          );
+
+          if (providedText !== undefined) {
+            translatedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: providedText,
+              locale: targetLocale,
+              status: "TRANSLATED",
+            });
+            setNestedValue(targetNamespaceObj, key, providedText);
+            fileModified = true;
+            continue;
+          }
+
           // Translate missing key
           const transResp = await provider.translate({
             text: sourceText,
@@ -230,6 +310,12 @@ export async function translateI18n(
           if (!transResp.translated) {
             status = "PENDING";
             pendingCount++;
+            pendingItems.push({
+              key,
+              sourceText,
+              locale: targetLocale,
+              namespace,
+            });
           } else if (transResp.confidence < 0.85) {
             status = "REVIEW";
             reviewCount++;
@@ -309,6 +395,29 @@ export async function translateI18n(
           continue;
         }
 
+        // Check providedTranslations first
+        const providedText = lookupProvidedTranslation(
+          input.providedTranslations,
+          targetLocale,
+          namespace,
+          key
+        );
+
+        if (providedText !== undefined) {
+          translatedCount++;
+          items.push({
+            namespace,
+            key,
+            sourceText,
+            translatedText: providedText,
+            locale: targetLocale,
+            status: "TRANSLATED",
+          });
+          setNestedValue(parsed, key, providedText);
+          fileModified = true;
+          continue;
+        }
+
         // Translate missing key
         const transResp = await provider.translate({
           text: sourceText,
@@ -323,6 +432,12 @@ export async function translateI18n(
         if (!transResp.translated) {
           status = "PENDING";
           pendingCount++;
+          pendingItems.push({
+            key,
+            sourceText,
+            locale: targetLocale,
+            namespace,
+          });
         } else if (transResp.confidence < 0.85) {
           status = "REVIEW";
           reviewCount++;
@@ -370,6 +485,7 @@ export async function translateI18n(
     review: reviewCount,
     filesModified: Array.from(filesModifiedSet).sort(),
     items,
+    pendingItems: pendingItems.length > 0 ? pendingItems : undefined,
     errors,
     warnings,
   };

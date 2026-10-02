@@ -142,9 +142,22 @@ export function injectRequiredHooks(
           funcBody = node.initializer.body;
         }
 
-        if (funcBody && ts.isBlock(funcBody)) {
-          targetInsertPos = funcBody.getStart(sourceFile) + 1;
-          return;
+        if (funcBody) {
+          if (ts.isBlock(funcBody)) {
+            targetInsertPos = funcBody.getStart(sourceFile) + 1;
+            return;
+          } else {
+            const bodyStart = funcBody.getStart(sourceFile);
+            const bodyEnd = funcBody.getEnd();
+            const bodyText = funcBody.getText(sourceFile);
+            const blockified = `{\n${indent}${hc.value};\n${indent}return ${bodyText};\n}`;
+            updatedText =
+              updatedText.slice(0, bodyStart) +
+              blockified +
+              updatedText.slice(bodyEnd);
+            targetInsertPos = -1;
+            return;
+          }
         }
       }
 
@@ -153,13 +166,13 @@ export function injectRequiredHooks(
 
     findComponentBody(sourceFile);
 
-    if (targetInsertPos !== null) {
+    if (targetInsertPos !== null && targetInsertPos !== -1) {
       const insertion = `\n${indent}${hc.value};`;
       updatedText =
         updatedText.slice(0, targetInsertPos) +
         insertion +
         updatedText.slice(targetInsertPos);
-    } else {
+    } else if (targetInsertPos === null) {
       warnings.push({
         code: "HOOK_INJECTION_SKIPPED",
         message: `Could not safely locate top-level React component body to inject hook: "${hc.value}"`,

@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import fg from "fast-glob";
 
 export async function fileExists(filePath: string): Promise<boolean> {
@@ -68,4 +69,10 @@ export async function findFilesByGlob(
     ignore: ignore ?? ["**/node_modules/**", "**/dist/**", "**/.git/**"],
     dot: true,
   });
+}
+
+export async function writeTextFile(filePath: string, content: string): Promise<void> {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, content, "utf-8");
 }
