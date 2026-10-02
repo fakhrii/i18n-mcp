@@ -6,6 +6,7 @@ import { loadProjectConfig } from "../../config/config-loader.js";
 import { detectProjectMetadata } from "../discovery/project-detector.js";
 import { detectI18n } from "../discovery/i18n-detector.js";
 import { scanSourceFileAst } from "./ast-scanner.js";
+import { scanDartSourceFile } from "./dart-scanner.js";
 import { readTextFile, toPosixPath } from "../../utils/file-system.js";
 import { logger } from "../../utils/logger.js";
 
@@ -40,15 +41,26 @@ export async function scanHardcodedTexts(
     const content = await readTextFile(absFile);
     if (!content) continue;
 
-    const detected = scanSourceFileAst({
-      filePath: toPosixPath(relFile),
-      sourceCode: content,
-      knownNamespaces,
-      config,
-      onlyUserFacing: options?.onlyUserFacing ?? true,
-      minConfidence: options?.minConfidence ?? 0.0,
-      ambiguousOnly: options?.ambiguousOnly ?? false,
-    });
+    const isDart = relFile.endsWith(".dart");
+    const detected = isDart
+      ? scanDartSourceFile({
+          filePath: toPosixPath(relFile),
+          sourceCode: content,
+          knownNamespaces,
+          config,
+          onlyUserFacing: options?.onlyUserFacing ?? true,
+          minConfidence: options?.minConfidence ?? 0.0,
+          ambiguousOnly: options?.ambiguousOnly ?? false,
+        })
+      : scanSourceFileAst({
+          filePath: toPosixPath(relFile),
+          sourceCode: content,
+          knownNamespaces,
+          config,
+          onlyUserFacing: options?.onlyUserFacing ?? true,
+          minConfidence: options?.minConfidence ?? 0.0,
+          ambiguousOnly: options?.ambiguousOnly ?? false,
+        });
 
     for (const item of detected) {
       items.push(item);

@@ -3,6 +3,13 @@ import type { TranslationPlan } from "../../models/plan.js";
 import type { ApplyError, ApplyWarning } from "../../models/replacement.js";
 import { fileExists, readTextFile, toPosixPath } from "../../utils/file-system.js";
 import { getNestedValue, setNestedValue } from "../../utils/nested-json.js";
+import {
+  isArbFile,
+  parseArb,
+  serializeArb,
+  setArbEntry,
+  formatIcuPlural,
+} from "../locale/arb-handler.js";
 
 export interface LocaleUpdateResult {
   stagedFiles: Map<string, string>; // relative path -> new content
@@ -122,6 +129,39 @@ export async function prepareLocaleUpdates(
     if (await fileExists(absPath)) {
       currentContent = (await readTextFile(absPath)) || "{}";
       indent = detectIndentation(currentContent);
+    }
+
+    if (isArbFile(relPath)) {
+      let arb;
+      try {
+        arb = parseArb(currentContent);
+      } catch {
+        errors.push({
+          code: "MALFORMED_LOCALE_JSON",
+          message: `ARB file contains invalid JSON: ${toPosixPath(relPath)}`,
+          file: toPosixPath(relPath),
+        });
+        continue;
+      }
+
+      let entriesAdded = 0;
+      for (const entry of newEntries) {
+        if (entry.isPlural && entry.pluralForm) {
+          const icuVal = formatIcuPlural(entry.pluralForm, entry.pluralVariable || "count");
+          setArbEntry(arb, entry.key, icuVal, { description: `Plural translation for ${entry.key}` });
+          entriesAdded++;
+          translationEntriesCreated++;
+        } else {
+          setArbEntry(arb, entry.key, entry.sourceLocale.value, { description: `Translation for ${entry.key}` });
+          entriesAdded++;
+          translationEntriesCreated++;
+        }
+      }
+
+      if (entriesAdded > 0) {
+        stagedFiles.set(toPosixPath(relPath), serializeArb(arb, indent));
+      }
+      continue;
     }
 
     let parsed: Record<string, unknown> = {};

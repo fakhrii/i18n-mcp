@@ -22,22 +22,34 @@ export const validateI18nSchema = {
     .optional()
     .default(false)
     .describe("If true, also scans source files for remaining unextracted hardcoded strings."),
+  checkUnusedKeys: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("If true, scans source code to identify dead/unused keys in locale catalogs."),
+  pruneUnusedKeys: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("If true, safely deletes unused/dead keys from all locale catalogs."),
   scope: z
     .array(z.string())
     .optional()
-    .describe("Optional specific directory or file scope when checkSourceCode is enabled."),
+    .describe("Optional specific directory or file scope when checkSourceCode or checkUnusedKeys is enabled."),
 };
 
 export function registerValidateI18nTool(server: McpServer): void {
   server.tool(
     "validate_i18n",
-    "Validate i18n implementation for missing translations, interpolation variable mismatches, orphan keys, and malformed JSON.",
+    "Validate i18n implementation for missing translations, interpolation variable mismatches, orphan keys, unused dead keys, and malformed JSON.",
     validateI18nSchema,
     async ({
       projectPath,
       locales,
       namespaces,
       checkSourceCode,
+      checkUnusedKeys,
+      pruneUnusedKeys,
       scope,
     }) => {
       logger.info(`Invoking validate_i18n (projectPath=${projectPath})`);
@@ -47,6 +59,8 @@ export function registerValidateI18nTool(server: McpServer): void {
           locales,
           namespaces,
           checkSourceCode: checkSourceCode ?? false,
+          checkUnusedKeys: checkUnusedKeys ?? false,
+          pruneUnusedKeys: pruneUnusedKeys ?? false,
           scope,
         });
 

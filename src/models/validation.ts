@@ -4,7 +4,8 @@ export type ValidationIssueType =
   | "ORPHAN_KEY"
   | "MALFORMED_JSON"
   | "HARDCODED_STRING"
-  | "UNRESOLVED_KEY";
+  | "UNRESOLVED_KEY"
+  | "UNUSED_KEY";
 
 export interface I18nValidationIssue {
   type: ValidationIssueType;
@@ -21,6 +22,8 @@ export interface ValidateI18nInput {
   locales?: string[];
   namespaces?: string[];
   checkSourceCode?: boolean;
+  checkUnusedKeys?: boolean;
+  pruneUnusedKeys?: boolean;
   scope?: string[];
 }
 
@@ -33,5 +36,7 @@ export interface I18nValidationResult {
     totalKeys: number;
     localesChecked: string[];
     namespacesChecked: string[];
+    unusedKeysCount?: number;
+    prunedKeysCount?: number;
   };
 }
