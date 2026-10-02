@@ -371,6 +371,19 @@ export async function generateI18nPlan(
         targets,
         variables: primaryItem.variables,
         occurrences: items.length,
+        ...(primaryItem.isPlural
+          ? {
+              isPlural: true,
+              pluralVariable: primaryItem.pluralVariable,
+              pluralForm: primaryItem.pluralForm,
+            }
+          : {}),
+        ...(primaryItem.isRichText
+          ? {
+              isRichText: true,
+              richTextComponents: primaryItem.richTextComponents,
+            }
+          : {}),
       };
 
       plannedTranslationsByKey.set(translationId, transPlan);

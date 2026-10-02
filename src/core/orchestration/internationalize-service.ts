@@ -294,6 +294,7 @@ export async function internationalizeProject(
         targetLocales,
         namespaces: input.namespaces,
         dryRun: false,
+        providedTranslations: input.providedTranslations,
       });
 
       transMeta = {

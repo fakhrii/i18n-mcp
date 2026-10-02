@@ -56,6 +56,14 @@ export interface DetectedString {
   calleeName?: string;
   variables?: string[];
   variableExpressions?: Record<string, string>;
+  isPlural?: boolean;
+  pluralVariable?: string;
+  pluralForm?: {
+    one: string;
+    other: string;
+  };
+  isRichText?: boolean;
+  richTextComponents?: Record<string, string>;
 }
 
 export interface ScanOptions {

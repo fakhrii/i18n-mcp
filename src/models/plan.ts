@@ -43,6 +43,14 @@ export interface TranslationPlan {
   targets: TranslationTargetLocale[];
   variables?: string[];
   occurrences: number;
+  isPlural?: boolean;
+  pluralVariable?: string;
+  pluralForm?: {
+    one: string;
+    other: string;
+  };
+  isRichText?: boolean;
+  richTextComponents?: Record<string, string>;
 }
 
 export interface SourceChangePlan {

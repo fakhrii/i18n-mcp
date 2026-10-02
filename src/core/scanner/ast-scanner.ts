@@ -3,6 +3,8 @@ import type { AstContextType, DetectedString } from "../../models/scanner.js";
 import { classifyString, computeSemanticRole } from "../classifier/classifier.js";
 import { generateSemanticKey } from "../keys/key-generator.js";
 import { resolveSuggestedNamespace } from "../namespace/namespace-resolver.js";
+import { isCountIdentifier, derivePluralForms } from "../plural/plural-helper.js";
+import { extractRichTextJsx } from "./rich-text-helper.js";
 import type { I18nMcpConfig } from "../../models/config.js";
 
 export interface AstScanOptions {
@@ -51,6 +53,11 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     isSwitchCase?: boolean;
     variables?: string[];
     variableExpressions?: Record<string, string>;
+    isPlural?: boolean;
+    pluralVariable?: string;
+    pluralForm?: { one: string; other: string };
+    isRichText?: boolean;
+    richTextComponents?: Record<string, string>;
   }): void {
     const {
       node,
@@ -64,6 +71,11 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       isSwitchCase,
       variables,
       variableExpressions,
+      isPlural,
+      pluralVariable,
+      pluralForm,
+      isRichText,
+      richTextComponents,
     } = params;
 
     handledNodes.add(node);
@@ -143,6 +155,8 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       ...(variableExpressions && Object.keys(variableExpressions).length > 0
         ? { variableExpressions }
         : {}),
+      ...(isPlural ? { isPlural, pluralVariable, pluralForm } : {}),
+      ...(isRichText ? { isRichText, richTextComponents } : {}),
     });
   }
 
@@ -271,6 +285,82 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     );
   }
 
+  function handleConditionalPlural(
+    condExpr: ts.ConditionalExpression,
+    compName?: string,
+    astType: AstContextType = "JSX_TEXT"
+  ): boolean {
+    if (!ts.isBinaryExpression(condExpr.condition)) return false;
+    const op = condExpr.condition.operatorToken.kind;
+    const isEq =
+      op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.EqualsEqualsToken;
+
+    if (!isEq) return false;
+
+    const left = condExpr.condition.left;
+    const right = condExpr.condition.right;
+
+    let countVarExpr: ts.Expression | undefined;
+    if (ts.isNumericLiteral(right) && right.text === "1") {
+      countVarExpr = left;
+    } else if (ts.isNumericLiteral(left) && left.text === "1") {
+      countVarExpr = right;
+    }
+
+    if (!countVarExpr) return false;
+
+    const countExpressionText = countVarExpr.getText(sourceFile).trim();
+
+    // Extract singular text from whenTrue
+    let singularText = "";
+    if (ts.isStringLiteral(condExpr.whenTrue)) {
+      singularText = condExpr.whenTrue.text;
+    } else if (ts.isNoSubstitutionTemplateLiteral(condExpr.whenTrue)) {
+      singularText = condExpr.whenTrue.text;
+    }
+
+    // Extract plural text from whenFalse
+    let pluralText = "";
+    if (ts.isTemplateExpression(condExpr.whenFalse)) {
+      let formatted = condExpr.whenFalse.head.text;
+      for (const span of condExpr.whenFalse.templateSpans) {
+        formatted += "{{count}}" + span.literal.text;
+      }
+      pluralText = formatted;
+    } else if (
+      ts.isStringLiteral(condExpr.whenFalse) ||
+      ts.isNoSubstitutionTemplateLiteral(condExpr.whenFalse)
+    ) {
+      pluralText = condExpr.whenFalse.text;
+    }
+
+    if (!singularText || !pluralText) return false;
+
+    handledNodes.add(condExpr);
+    handledNodes.add(condExpr.condition);
+    handledNodes.add(condExpr.whenTrue);
+    handledNodes.add(condExpr.whenFalse);
+
+    addCandidate({
+      node: condExpr,
+      text: pluralText,
+      rawText: condExpr.getText(sourceFile),
+      astType,
+      componentName: compName,
+      variables: ["count"],
+      variableExpressions: { count: countExpressionText },
+      isPlural: true,
+      pluralVariable: "count",
+      pluralForm: {
+        one: singularText,
+        other: pluralText,
+      },
+    });
+
+    return true;
+  }
+
   function visit(node: ts.Node): void {
     // 1. Skip if already inside a translation call like t(...) or i18n.t(...)
     if (isDescendantOfTranslatedCall(node)) {
@@ -280,6 +370,31 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     // 2. Skip imports and exports
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
       return;
+    }
+
+    // 2b. Detect compound rich text JSX elements: <Text>Please read <Text style={styles.link}>Terms</Text></Text>
+    if (ts.isJsxElement(node) && !handledNodes.has(node)) {
+      const rich = extractRichTextJsx(node, sourceFile);
+      if (rich) {
+        handledNodes.add(node);
+        handledNodes.add(node.openingElement);
+        handledNodes.add(node.closingElement);
+        for (const child of rich.handledChildNodes) {
+          handledNodes.add(child);
+        }
+
+        const compName = node.openingElement.tagName.getText(sourceFile);
+        addCandidate({
+          node,
+          text: rich.compositeText,
+          rawText: rich.rawText,
+          astType: "JSX_TEXT",
+          componentName: compName,
+          isRichText: true,
+          richTextComponents: rich.components,
+        });
+        return;
+      }
     }
 
     // 3. Detect JSX Text: <Text>Welcome back</Text>
@@ -324,6 +439,10 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
           componentName: compName,
         });
         return;
+      } else if (ts.isConditionalExpression(expr)) {
+        if (handleConditionalPlural(expr, compName, "JSX_TEXT")) {
+          return;
+        }
       }
     }
 
@@ -496,6 +615,12 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       });
     }
 
+    if (ts.isConditionalExpression(node) && !handledNodes.has(node)) {
+      if (handleConditionalPlural(node, getEnclosingComponentName(node), "STRING_LITERAL")) {
+        return;
+      }
+    }
+
     // 8. General string literals not handled in specific expressions
     if (ts.isStringLiteral(node) && !handledNodes.has(node)) {
       let propName: string | undefined;
@@ -594,9 +719,12 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       return { varName, expressionText };
     }
 
-    // 2. Property access: e.g. user.firstName, props.title
+    // 2. Property access: e.g. user.firstName, props.title, items.length
     if (ts.isPropertyAccessExpression(expr)) {
       const prop = expr.name.text;
+      if (isCountIdentifier(prop, expressionText)) {
+        return { varName: "count", expressionText };
+      }
       let varName = sanitizeVarName(prop);
       if (existingVarNames.has(varName) && ts.isIdentifier(expr.expression)) {
         varName = `${expr.expression.text}_${prop}`;
@@ -649,6 +777,19 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       formattedText += `{{${varName}}}` + span.literal.text;
     }
 
+    let isPlural = false;
+    let pluralVariable: string | undefined;
+    let pluralForm: { one: string; other: string } | undefined;
+
+    if (variables.includes("count")) {
+      const forms = derivePluralForms(formattedText, "count");
+      if (forms.one !== forms.other) {
+        isPlural = true;
+        pluralVariable = "count";
+        pluralForm = forms;
+      }
+    }
+
     addCandidate({
       node: expr,
       text: formattedText,
@@ -659,6 +800,9 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       calleeName,
       variables,
       variableExpressions,
+      isPlural,
+      pluralVariable,
+      pluralForm,
     });
   }
 

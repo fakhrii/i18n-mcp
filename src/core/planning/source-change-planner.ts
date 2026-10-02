@@ -4,6 +4,7 @@ import type { CodeChange, SourceChangePlan } from "../../models/plan.js";
 export interface FileTranslationContext {
   filePath: string;
   hasUseTranslationImport: boolean;
+  hasTransImport?: boolean;
   hasI18nImport: boolean;
   boundNamespaces: string[];
   accessPattern: "useTranslation" | "i18n.t" | "custom" | "none";
@@ -17,7 +18,11 @@ export function analyzeFileTranslationContext(
   projectAccessPattern: string = "useTranslation"
 ): FileTranslationContext {
   const hasUseTranslationImport =
-    /import\s+{[^}]*useTranslation[^}]*}\s+from\s+['"]react-i18next['"]/.test(
+    /import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
+      fileContent
+    );
+  const hasTransImport =
+    /import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
       fileContent
     );
   const hasI18nImport =
@@ -54,6 +59,7 @@ export function analyzeFileTranslationContext(
   return {
     filePath: "",
     hasUseTranslationImport,
+    hasTransImport,
     hasI18nImport,
     boundNamespaces,
     accessPattern,
@@ -80,6 +86,19 @@ export function buildReplacementExpression(
     keyExpression = `${namespace}:${key}`;
   } else if (!isBoundToNs && fileContext.boundNamespaces.length > 0) {
     keyExpression = `${namespace}:${key}`;
+  }
+
+  if (item.isRichText) {
+    const compEntries = Object.entries(item.richTextComponents || {});
+    let compProp = "";
+    if (compEntries.length > 0) {
+      const formattedComps = compEntries
+        .map(([tag, jsx]) => `${tag}: ${jsx}`)
+        .join(", ");
+      compProp = ` components={{ ${formattedComps} }}`;
+    }
+
+    return `<Trans i18nKey="${keyExpression}"${compProp}>${item.text}</Trans>`;
   }
 
   // Handle template literal variables
@@ -125,7 +144,8 @@ export function buildReplacementExpression(
  */
 export function determineRequiredCodeChanges(
   fileContext: FileTranslationContext,
-  targetNamespace: string
+  targetNamespace: string,
+  hasRichText = false
 ): CodeChange[] {
   const changes: CodeChange[] = [];
 
@@ -152,6 +172,14 @@ export function determineRequiredCodeChanges(
         module: "i18next",
       });
     }
+  }
+
+  if (hasRichText && !fileContext.hasTransImport) {
+    changes.push({
+      type: "ADD_IMPORT",
+      value: "Trans",
+      module: "react-i18next",
+    });
   }
 
   return changes;
@@ -249,7 +277,11 @@ export function planSourceChange(
     };
   }
 
-  const requiredCodeChanges = determineRequiredCodeChanges(fileContext, namespace);
+  const requiredCodeChanges = determineRequiredCodeChanges(
+    fileContext,
+    namespace,
+    item.isRichText
+  );
 
   return {
     action: "REPLACE",

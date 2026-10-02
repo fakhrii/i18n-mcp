@@ -24,6 +24,7 @@ export interface InternationalizeInput {
   exclude?: string[];
   namespaces?: string[];
   candidateDecisions?: Record<string, boolean>;
+  providedTranslations?: Record<string, any>;
 }
 
 export interface InternationalizeResult {

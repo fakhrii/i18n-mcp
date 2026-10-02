@@ -138,6 +138,17 @@ export async function prepareLocaleUpdates(
 
     let entriesAdded = 0;
     for (const entry of newEntries) {
+      if (entry.isPlural && entry.pluralForm) {
+        const pathOne = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_one`, relPath);
+        const pathOther = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_other`, relPath);
+
+        setNestedValue(parsed, pathOne, entry.pluralForm.one);
+        setNestedValue(parsed, pathOther, entry.pluralForm.other);
+        entriesAdded += 2;
+        translationEntriesCreated += 2;
+        continue;
+      }
+
       const targetPath = resolveTargetKeyPath(parsed, entry.namespace, entry.key, relPath);
       const existingVal = getNestedValue(parsed, targetPath);
 
