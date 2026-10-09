@@ -14,7 +14,7 @@ export type MatchType =
   | "NONE";
 
 export interface CodeChange {
-  type: "ADD_IMPORT" | "ADD_HOOK" | "MODIFY_IMPORT";
+  type: "ADD_IMPORT" | "ADD_HOOK" | "UPDATE_HOOK" | "MODIFY_IMPORT";
   value: string;
   module?: string;
 }

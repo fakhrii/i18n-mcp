@@ -133,6 +133,55 @@ describe("Source Change Planner", () => {
       const expr = buildReplacementExpression(item, "auth", "GREETING", fileCtxBoundAuth);
       expect(expr).toBe('t("GREETING", { name, count })');
     });
+
+    it("correctly handles multi-namespace bound components (primary vs secondary)", () => {
+      const fileCtxMultiNs = {
+        filePath: "src/Screen.tsx",
+        hasUseTranslationImport: true,
+        hasI18nImport: false,
+        boundNamespaces: ["profile", "common"],
+        accessPattern: "useTranslation" as const,
+      };
+
+      const primaryItem: DetectedString = {
+        file: "src/Screen.tsx",
+        line: 10,
+        column: 5,
+        text: "User Profile",
+        rawText: '"User Profile"',
+        type: "JSX_TEXT",
+        classification: "UI_TEXT",
+        confidence: 0.95,
+        confidenceLevel: "HIGH",
+        suggestedNamespace: "profile",
+        suggestedKey: "USER_PROFILE",
+        reason: "JSX Text",
+      };
+
+      const secondaryItem: DetectedString = {
+        file: "src/Screen.tsx",
+        line: 20,
+        column: 5,
+        text: "Save",
+        rawText: '"Save"',
+        type: "JSX_TEXT",
+        classification: "UI_TEXT",
+        confidence: 0.95,
+        confidenceLevel: "HIGH",
+        suggestedNamespace: "common",
+        suggestedKey: "SAVE",
+        reason: "JSX Text",
+      };
+
+      // Primary namespace uses unprefixed key
+      expect(buildReplacementExpression(primaryItem, "profile", "USER_PROFILE", fileCtxMultiNs)).toBe(
+        '{t("USER_PROFILE")}'
+      );
+      // Secondary namespace uses namespace-prefixed key
+      expect(buildReplacementExpression(secondaryItem, "common", "SAVE", fileCtxMultiNs)).toBe(
+        '{t("common:SAVE")}'
+      );
+    });
   });
 
   describe("determineRequiredCodeChanges", () => {
@@ -158,6 +207,40 @@ describe("Source Change Planner", () => {
       });
     });
 
+    it("plans multi-namespace ADD_HOOK when multiple namespaces are required", () => {
+      const fileCtx = {
+        filePath: "src/Screen.tsx",
+        hasUseTranslationImport: false,
+        hasI18nImport: false,
+        boundNamespaces: [],
+        accessPattern: "useTranslation" as const,
+      };
+
+      const changes = determineRequiredCodeChanges(fileCtx, ["profile", "common"]);
+      expect(changes).toHaveLength(2);
+      expect(changes[1]).toEqual({
+        type: "ADD_HOOK",
+        value: 'const { t } = useTranslation(["profile", "common"])',
+      });
+    });
+
+    it("plans UPDATE_HOOK when an existing hook needs additional namespaces", () => {
+      const fileCtx = {
+        filePath: "src/Screen.tsx",
+        hasUseTranslationImport: true,
+        hasI18nImport: false,
+        boundNamespaces: ["profile"],
+        accessPattern: "useTranslation" as const,
+      };
+
+      const changes = determineRequiredCodeChanges(fileCtx, ["profile", "common"]);
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toEqual({
+        type: "UPDATE_HOOK",
+        value: 'const { t } = useTranslation(["profile", "common"])',
+      });
+    });
+
     it("plans nothing if import and hook already exist", () => {
       const fileCtx = {
         filePath: "src/Screen.tsx",
@@ -168,6 +251,19 @@ describe("Source Change Planner", () => {
       };
 
       const changes = determineRequiredCodeChanges(fileCtx, "auth");
+      expect(changes).toHaveLength(0);
+    });
+
+    it("plans nothing if multi-namespace hook already has all namespaces", () => {
+      const fileCtx = {
+        filePath: "src/Screen.tsx",
+        hasUseTranslationImport: true,
+        hasI18nImport: false,
+        boundNamespaces: ["profile", "common"],
+        accessPattern: "useTranslation" as const,
+      };
+
+      const changes = determineRequiredCodeChanges(fileCtx, ["profile", "common"]);
       expect(changes).toHaveLength(0);
     });
   });

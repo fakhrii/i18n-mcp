@@ -21,6 +21,8 @@ import {
 import { resolveKeyCollision } from "./key-collision-resolver.js";
 import {
   analyzeFileTranslationContext,
+  buildReplacementExpression,
+  determineRequiredCodeChanges,
   planSourceChange,
   type FileTranslationContext,
 } from "./source-change-planner.js";
@@ -202,8 +204,22 @@ export async function generateI18nPlan(
   const fileContexts = new Map<string, FileTranslationContext>();
   const uniqueFiles = new Set(scanResult.items.map((i) => i.file));
 
-  const primaryAccessPattern =
-    analysis.accessPatterns.length > 0 ? analysis.accessPatterns[0] : "useTranslation";
+  let primaryAccessPattern = "useTranslation";
+  if (
+    analysis.framework === "react-native" ||
+    analysis.framework === "react" ||
+    analysis.framework === "nextjs"
+  ) {
+    primaryAccessPattern = "useTranslation";
+  } else if (analysis.accessPatterns.includes("useTranslation")) {
+    primaryAccessPattern = "useTranslation";
+  } else if (analysis.accessPatterns.includes("t")) {
+    primaryAccessPattern = "useTranslation";
+  } else if (analysis.accessPatterns.includes("i18n.t")) {
+    primaryAccessPattern = "i18n.t";
+  } else if (analysis.accessPatterns.length > 0) {
+    primaryAccessPattern = analysis.accessPatterns[0]!;
+  }
 
   for (const relFile of uniqueFiles) {
     const absFile = path.join(projectRoot, relFile);
@@ -417,21 +433,87 @@ export async function generateI18nPlan(
     }
   }
 
-  // 9. Aggregate file-level required code changes (imports and hooks)
-  const fileCodeChangesMap = new Map<string, CodeChange[]>();
-  for (const sc of sourceChanges) {
-    if (sc.requiredCodeChanges && sc.requiredCodeChanges.length > 0) {
-      const existing = fileCodeChangesMap.get(sc.file) || [];
-      for (const change of sc.requiredCodeChanges) {
-        if (!existing.some((e) => e.type === change.type && e.value === change.value)) {
-          existing.push(change);
-        }
-      }
-      fileCodeChangesMap.set(sc.file, existing);
-    }
+  // 9. Coordinate multi-namespace file requirements, hook changes, and prefixing
+  const itemsByLocation = new Map<string, DetectedString>();
+  for (const it of scanResult.items) {
+    itemsByLocation.set(`${it.file}:${it.line}:${it.column}`, it);
   }
 
-  // Deduplicate required code changes on each sourceChange
+  const fileCodeChangesMap = new Map<string, CodeChange[]>();
+
+  for (const relFile of uniqueFiles) {
+    const fileCtx = fileContexts.get(relFile);
+    if (!fileCtx) continue;
+
+    // Source changes belonging to this file that will be applied or reviewed
+    const fileSCs = sourceChanges.filter(
+      (sc) => sc.file === relFile && sc.action !== "SKIP"
+    );
+    if (fileSCs.length === 0) continue;
+
+    // Collect all namespaces used across source changes in this file
+    const fileNamespaces = new Set<string>();
+    for (const sc of fileSCs) {
+      fileNamespaces.add(sc.namespace);
+    }
+
+    const existingBound = [...fileCtx.boundNamespaces];
+    let mergedNamespaces: string[];
+
+    if (existingBound.length > 0) {
+      // Existing hook: keep original bound namespaces in front, append newly referenced namespaces
+      mergedNamespaces = [...existingBound];
+      for (const ns of fileNamespaces) {
+        if (!mergedNamespaces.includes(ns)) {
+          mergedNamespaces.push(ns);
+        }
+      }
+    } else {
+      // Greenfield or un-migrated file:
+      // Prioritize feature-specific namespace (non-"common") as primary if present
+      const nonCommon = Array.from(fileNamespaces).filter((ns) => ns !== "common");
+      const primaryNs =
+        nonCommon.length > 0
+          ? nonCommon[0]!
+          : fileNamespaces.values().next().value || "common";
+      mergedNamespaces = [
+        primaryNs,
+        ...Array.from(fileNamespaces).filter((ns) => ns !== primaryNs),
+      ];
+    }
+
+    // Update file context bound namespaces to reflect multi-namespace setup
+    fileCtx.boundNamespaces = mergedNamespaces;
+
+    // Recompute replacement expressions with the established boundNamespaces
+    for (const sc of fileSCs) {
+      const locKey = `${sc.file}:${sc.location.line}:${sc.location.column}`;
+      const matchingItem = itemsByLocation.get(locKey);
+      if (matchingItem) {
+        sc.replacement = buildReplacementExpression(
+          matchingItem,
+          sc.namespace,
+          sc.key,
+          fileCtx
+        );
+      }
+    }
+
+    // Determine unified code changes for this file (ADD_HOOK or UPDATE_HOOK, ADD_IMPORT)
+    const hasRichText = fileSCs.some((sc) => sc.replacement.includes("<Trans"));
+    const fileChanges = determineRequiredCodeChanges(
+      {
+        ...fileCtx,
+        boundNamespaces: existingBound,
+      },
+      mergedNamespaces,
+      hasRichText
+    );
+
+    fileCodeChangesMap.set(relFile, fileChanges);
+  }
+
+  // Attach deduplicated required code changes to each sourceChange
   for (const sc of sourceChanges) {
     if (fileCodeChangesMap.has(sc.file)) {
       sc.requiredCodeChanges = fileCodeChangesMap.get(sc.file);

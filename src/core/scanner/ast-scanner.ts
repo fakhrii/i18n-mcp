@@ -83,6 +83,8 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    const enclosingVar = getEnclosingVariableName(node);
+
     // Classify
     const classificationResult = classifyString({
       text: trimmed,
@@ -93,6 +95,8 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       isComparison,
       isSwitchCase,
       isStyleContext: isInsideStyleContext(node),
+      variableName: enclosingVar,
+      filePath,
     });
 
     const semanticRole =
@@ -158,6 +162,20 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
       ...(isPlural ? { isPlural, pluralVariable, pluralForm } : {}),
       ...(isRichText ? { isRichText, richTextComponents } : {}),
     });
+  }
+
+  function getEnclosingVariableName(node: ts.Node): string | undefined {
+    let curr: ts.Node | undefined = node.parent;
+    while (curr && curr !== sourceFile) {
+      if (ts.isVariableDeclaration(curr) && ts.isIdentifier(curr.name)) {
+        return curr.name.text;
+      }
+      if (ts.isPropertyDeclaration(curr) && ts.isIdentifier(curr.name)) {
+        return curr.name.text;
+      }
+      curr = curr.parent;
+    }
+    return undefined;
   }
 
   function getEnclosingComponentName(node: ts.Node): string | undefined {

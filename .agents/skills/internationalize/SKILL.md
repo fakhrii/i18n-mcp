@@ -70,6 +70,7 @@ If the scan or plan contains items with `semanticRole: "AMBIGUOUS"`:
 - Inspect the candidates:
   - UI labels / actions (e.g. `<Button action="Save" />`) $\rightarrow$ Approve (`true`).
   - Technical tokens / IDs / styles (e.g. `mode="dark"`) $\rightarrow$ Skip (`false`).
+  - Mock data / test fixtures / dummy samples (e.g. `const MOCK_ITEMS = ...`, sample data, fixtures) $\rightarrow$ Skip (`false`). Never extract or translate mock data!
 - Bundle decisions into `candidateDecisions: { "<candidate-id>": true/false }` for subsequent calls.
 
 ### Step 4: Present Results to Developer
@@ -107,3 +108,20 @@ Re-invoke the MCP tool with:
 }
 ```
 Present the final applied report and validation results.
+
+---
+
+## Reverting Changes or Excluding Mock Data
+
+If the developer indicates that mock data, dummy text, or unwanted files were modified:
+
+1. **Reverting Changes via Git**:
+   - Revert modified files: `git checkout -- <file>` or `git restore <file>`
+   - Revert entire directory: `git restore <directory>`
+2. **Reverting Changes via Backup (`createBackup: true`)**:
+   - Restore the `.bak` file created next to the modified source file (e.g. `cp src/Screen.tsx.bak src/Screen.tsx`).
+3. **Excluding Mock Files on Next Run**:
+   - Pass explicit exclusions to the tool:
+     `--exclude="**/mocks/**,**/*.mock.*,**/fixtures/**,**/*.stories.*"`
+   - Or target the specific component file directly rather than a broad folder:
+     `/internationalize src/screens/HomeScreen.tsx`

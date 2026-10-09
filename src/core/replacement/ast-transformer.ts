@@ -23,6 +23,8 @@ function isSourceMatching(actual: string, expected: string): boolean {
 
 /**
  * Injects required imports into the source code if not already present.
+ * Uses TypeScript AST for reliable positioning, handling multi-line imports,
+ * directives ("use client", "use strict"), and comments.
  */
 export function injectRequiredImports(
   sourceText: string,
@@ -30,44 +32,119 @@ export function injectRequiredImports(
 ): string {
   let result = sourceText;
 
-  for (const change of codeChanges) {
-    if (change.type === "ADD_IMPORT" && change.module === "react-i18next") {
-      const importItem = change.value; // e.g. "useTranslation"
+  const importChanges = codeChanges.filter(
+    (c) => c.type === "ADD_IMPORT" && (c.module === "react-i18next" || c.module === "i18next")
+  );
+  if (importChanges.length === 0) {
+    return result;
+  }
 
-      // Check if module is already imported
-      const moduleImportRegex =
-        /import\s+\{([^}]+)\}\s+from\s+['"]react-i18next['"];?/;
-      const match = result.match(moduleImportRegex);
+  for (const change of importChanges) {
+    const moduleName = change.module || "react-i18next";
+    const importItem = change.value; // e.g. "useTranslation", "Trans", "i18n"
 
-      if (match) {
-        const existingImports = match[1]!
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+    const sourceFile = ts.createSourceFile(
+      "temp.tsx",
+      result,
+      ts.ScriptTarget.Latest,
+      /* setParentNodes */ true,
+      ts.ScriptKind.TSX
+    );
 
-        if (!existingImports.includes(importItem)) {
-          const updatedImports = [...existingImports, importItem].join(", ");
-          const replacement = `import { ${updatedImports} } from "react-i18next";`;
-          result = result.replace(match[0], replacement);
-        }
-      } else {
-        // Find position of the last existing import statement
-        const allImports = Array.from(
-          result.matchAll(/^import\s+.*from\s+['"].*['"];?/gm)
+    const importDeclarations = sourceFile.statements.filter(ts.isImportDeclaration);
+
+    // 1. Check if module is already imported
+    const existingDecl = importDeclarations.find(
+      (decl) =>
+        ts.isStringLiteral(decl.moduleSpecifier) &&
+        decl.moduleSpecifier.text === moduleName
+    );
+
+    if (existingDecl) {
+      const importClause = existingDecl.importClause;
+      if (!importClause) {
+        // e.g. import "react-i18next";
+        const start = existingDecl.getStart(sourceFile);
+        const end = existingDecl.getEnd();
+        result =
+          result.slice(0, start) +
+          `import { ${importItem} } from "${moduleName}";` +
+          result.slice(end);
+        continue;
+      }
+
+      // Check default import: e.g. import i18n from "i18next"
+      if (importClause.name && importClause.name.text === importItem) {
+        continue; // Already imported
+      }
+
+      // Check named imports: e.g. import { useTranslation } from "react-i18next"
+      if (importClause.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
+        const hasItem = importClause.namedBindings.elements.some(
+          (elem) => (elem.propertyName?.text || elem.name.text) === importItem
         );
+        if (hasItem) {
+          continue; // Already imported
+        }
 
-        if (allImports.length > 0) {
-          const lastImport = allImports[allImports.length - 1]!;
-          const insertPos = (lastImport.index ?? 0) + lastImport[0].length;
-          result =
-            result.slice(0, insertPos) +
-            `\nimport { ${importItem} } from "react-i18next";` +
-            result.slice(insertPos);
-        } else {
-          // Add at the very beginning
-          result = `import { ${importItem} } from "react-i18next";\n` + result;
+        // Replace named bindings with updated list
+        const existingNames = importClause.namedBindings.elements.map((elem) =>
+          elem.propertyName
+            ? `${elem.propertyName.text} as ${elem.name.text}`
+            : elem.name.text
+        );
+        const updatedList = [...existingNames, importItem].join(", ");
+        const replacement = `{ ${updatedList} }`;
+
+        result =
+          result.slice(0, importClause.namedBindings.getStart(sourceFile)) +
+          replacement +
+          result.slice(importClause.namedBindings.getEnd());
+        continue;
+      } else if (importClause.name && !importClause.namedBindings) {
+        // Has default import, e.g. import React from "react-i18next"
+        // Convert to: import React, { useTranslation } from "react-i18next"
+        const defaultNameEnd = importClause.name.getEnd();
+        result =
+          result.slice(0, defaultNameEnd) +
+          `, { ${importItem} }` +
+          result.slice(defaultNameEnd);
+        continue;
+      }
+    } else {
+      // 2. No import from moduleName exists yet: insert a new import declaration
+      let insertPos = 0;
+      let leadingNewline = "";
+      let trailingNewline = "\n";
+
+      if (importDeclarations.length > 0) {
+        // Find the absolute highest end offset among all import declarations
+        const lastImport = importDeclarations[importDeclarations.length - 1]!;
+        insertPos = lastImport.getEnd();
+        leadingNewline = "\n";
+        trailingNewline = "";
+      } else {
+        // Check for directives at file start (e.g. 'use client', 'use strict')
+        const directives = sourceFile.statements.filter(
+          (s) => ts.isExpressionStatement(s) && ts.isStringLiteral(s.expression)
+        );
+        if (directives.length > 0) {
+          const lastDirective = directives[directives.length - 1]!;
+          insertPos = lastDirective.getEnd();
+          leadingNewline = "\n\n";
+          trailingNewline = "";
         }
       }
+
+      const newImportStatement =
+        importItem === "i18n" && moduleName === "i18next"
+          ? `${leadingNewline}import i18n from "${moduleName}";${trailingNewline}`
+          : `${leadingNewline}import { ${importItem} } from "${moduleName}";${trailingNewline}`;
+
+      result =
+        result.slice(0, insertPos) +
+        newImportStatement +
+        result.slice(insertPos);
     }
   }
 
@@ -75,8 +152,225 @@ export function injectRequiredImports(
 }
 
 /**
+ * Recursively unwraps HOC calls (React.memo, forwardRef, etc.), parens, and type assertions
+ * to retrieve the underlying component function declaration or arrow function.
+ */
+function unwrapComponentFunction(
+  expr: ts.Expression
+): ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression | undefined {
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    return expr;
+  }
+  if (ts.isCallExpression(expr) && expr.arguments.length > 0) {
+    return unwrapComponentFunction(expr.arguments[0]!);
+  }
+  if (ts.isParenthesizedExpression(expr)) {
+    return unwrapComponentFunction(expr.expression);
+  }
+  if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
+    return unwrapComponentFunction(expr.expression);
+  }
+  return undefined;
+}
+
+function containsJsx(node: ts.Node): boolean {
+  let found = false;
+  function walk(n: ts.Node) {
+    if (found) return;
+    if (
+      ts.isJsxElement(n) ||
+      ts.isJsxSelfClosingElement(n) ||
+      ts.isJsxFragment(n)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(n, walk);
+  }
+  walk(node);
+  return found;
+}
+
+function functionCallsT(node: ts.Node): boolean {
+  let found = false;
+  function walk(n: ts.Node) {
+    if (found) return;
+    if (ts.isCallExpression(n)) {
+      const exprText = n.expression.getText();
+      if (exprText === "t") {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(n, walk);
+  }
+  walk(node);
+  return found;
+}
+
+function findUseTranslationCall(node: ts.Node): ts.CallExpression | undefined {
+  let found: ts.CallExpression | undefined;
+  function walk(n: ts.Node) {
+    if (found) return;
+    if (ts.isCallExpression(n)) {
+      const callee = n.expression.getText();
+      if (callee === "useTranslation" || callee.endsWith(".useTranslation")) {
+        found = n;
+        return;
+      }
+    }
+    // Don't recurse into nested function components
+    if (
+      n !== node &&
+      (ts.isFunctionDeclaration(n) ||
+        ts.isArrowFunction(n) ||
+        ts.isFunctionExpression(n))
+    ) {
+      return;
+    }
+    ts.forEachChild(n, walk);
+  }
+  walk(node);
+  return found;
+}
+
+function functionDeclaresT(fn: ts.FunctionLikeDeclaration): boolean {
+  // 1. Check parameters
+  for (const param of fn.parameters) {
+    if (ts.isIdentifier(param.name) && param.name.text === "t") {
+      return true;
+    }
+    if (ts.isObjectBindingPattern(param.name)) {
+      if (
+        param.name.elements.some(
+          (e) => ts.isIdentifier(e.name) && e.name.text === "t"
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 2. Check variable declarations in body
+  if (fn.body && ts.isBlock(fn.body)) {
+    for (const stmt of fn.body.statements) {
+      if (ts.isVariableStatement(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.name.text === "t") {
+            return true;
+          }
+          if (ts.isObjectBindingPattern(decl.name)) {
+            if (
+              decl.name.elements.some(
+                (e) => ts.isIdentifier(e.name) && e.name.text === "t"
+              )
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function detectIndentation(body: ts.Block, sourceFile: ts.SourceFile): string {
+  if (body.statements.length > 0) {
+    const firstStmt = body.statements[0]!;
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+      firstStmt.getStart(sourceFile)
+    );
+    const lineStart = sourceFile.getPositionOfLineAndCharacter(line, 0);
+    const linePrefix = sourceFile.text.slice(lineStart, lineStart + character);
+    const indentMatch = linePrefix.match(/^(\s+)/);
+    if (indentMatch) {
+      return indentMatch[1]!;
+    }
+  }
+  return "  ";
+}
+
+interface ComponentTarget {
+  name?: string;
+  funcNode: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  body: ts.Block | ts.Expression;
+  isConciseArrow: boolean;
+  hasHookCall: boolean;
+  hookCallNode?: ts.CallExpression;
+  declaresT: boolean;
+  callsT: boolean;
+}
+
+function findComponentTargets(sourceFile: ts.SourceFile): ComponentTarget[] {
+  const targets: ComponentTarget[] = [];
+
+  function checkAndAdd(
+    name: string | undefined,
+    func: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+    isExportDefault: boolean
+  ) {
+    if (!func.body) return;
+
+    const isNamedComponent = !!name && /^[A-Z]/.test(name);
+    const hasJsx = containsJsx(func.body);
+    const callsT = functionCallsT(func.body);
+
+    if (isNamedComponent || isExportDefault || hasJsx || callsT) {
+      const hookCall = findUseTranslationCall(func.body);
+      const declaresT = functionDeclaresT(func);
+
+      targets.push({
+        name,
+        funcNode: func,
+        body: func.body,
+        isConciseArrow: !ts.isBlock(func.body),
+        hasHookCall: !!hookCall,
+        hookCallNode: hookCall,
+        declaresT,
+        callsT,
+      });
+    }
+  }
+
+  for (const stmt of sourceFile.statements) {
+    // 1. Function declaration
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      const name = stmt.name ? stmt.name.text : undefined;
+      const isDefault =
+        stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+      checkAndAdd(name, stmt, isDefault);
+    }
+    // 2. Variable statement
+    else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) {
+          const unwrapped = unwrapComponentFunction(decl.initializer);
+          if (unwrapped) {
+            const name = ts.isIdentifier(decl.name) ? decl.name.text : undefined;
+            checkAndAdd(name, unwrapped, false);
+          }
+        }
+      }
+    }
+    // 3. Export assignment (export default ...)
+    else if (ts.isExportAssignment(stmt)) {
+      const unwrapped = unwrapComponentFunction(stmt.expression);
+      if (unwrapped) {
+        checkAndAdd(undefined, unwrapped, true);
+      }
+    }
+  }
+
+  return targets;
+}
+
+/**
  * Injects required hook declarations (e.g. `const { t } = useTranslation("auth");`)
  * into the top of the enclosing React functional component body.
+ * Robustly handles multi-component files, HOCs (memo, forwardRef), anonymous exports,
+ * and concise arrow expression bodies.
  */
 export function injectRequiredHooks(
   sourceText: string,
@@ -87,98 +381,112 @@ export function injectRequiredHooks(
   const errors: ApplyError[] = [];
   let updatedText = sourceText;
 
-  const hookChanges = codeChanges.filter((c) => c.type === "ADD_HOOK");
+  const hookChanges = codeChanges.filter(
+    (c) => c.type === "ADD_HOOK" || c.type === "UPDATE_HOOK"
+  );
   if (hookChanges.length === 0) {
     return { updatedText, warnings, errors };
   }
 
-  for (const hc of hookChanges) {
-    // If hook is already called in the file, skip
-    if (
-      updatedText.includes("useTranslation(") ||
-      updatedText.includes(hc.value)
-    ) {
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    updatedText,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
+      ? ts.ScriptKind.TSX
+      : ts.ScriptKind.TS
+  );
+
+  const targets = findComponentTargets(sourceFile);
+  if (targets.length === 0) {
+    warnings.push({
+      code: "HOOK_INJECTION_SKIPPED",
+      message: `Could not safely locate top-level React component body to inject hook in "${toPosixPath(filePath)}"`,
+      file: toPosixPath(filePath),
+    });
+    return { updatedText, warnings, errors };
+  }
+
+  interface TextEdit {
+    start: number;
+    end: number;
+    replacement: string;
+  }
+  const edits: TextEdit[] = [];
+
+  const updateHookChange = hookChanges.find((c) => c.type === "UPDATE_HOOK");
+  const addHookChange = hookChanges.find((c) => c.type === "ADD_HOOK");
+  const defaultHookValue =
+    addHookChange?.value ??
+    updateHookChange?.value ??
+    'const { t } = useTranslation("common")';
+
+  // 1. Process targets
+  for (const target of targets) {
+    // If target already has useTranslation
+    if (target.hasHookCall && target.hookCallNode) {
+      if (updateHookChange) {
+        const newCallMatch = updateHookChange.value.match(/useTranslation\s*\([^)]*\)/);
+        if (newCallMatch) {
+          const start = target.hookCallNode.getStart(sourceFile);
+          const end = target.hookCallNode.getEnd();
+          edits.push({
+            start,
+            end,
+            replacement: newCallMatch[0],
+          });
+        }
+      }
       continue;
     }
 
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      updatedText,
-      ts.ScriptTarget.Latest,
-      /* setParentNodes */ true,
-      filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
-        ? ts.ScriptKind.TSX
-        : ts.ScriptKind.TS
-    );
-
-    let targetInsertPos: number | null = null;
-    let indent = "  ";
-
-    // Traverse AST to locate the primary component function
-    function findComponentBody(node: ts.Node): void {
-      if (targetInsertPos !== null) return;
-
-      // 1. Function declaration: function MyComponent(...) { ... }
-      if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-        const name = node.name.text;
-        if (/^[A-Z]/.test(name)) {
-          // Insert after opening brace
-          targetInsertPos = node.body.getStart(sourceFile) + 1;
-          return;
-        }
-      }
-
-      // 2. Variable declaration: const MyComponent = (...) => { ... }
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        /^[A-Z]/.test(node.name.text) &&
-        node.initializer
-      ) {
-        let funcBody: ts.Node | undefined;
-        if (ts.isArrowFunction(node.initializer)) {
-          funcBody = node.initializer.body;
-        } else if (ts.isFunctionExpression(node.initializer)) {
-          funcBody = node.initializer.body;
-        }
-
-        if (funcBody) {
-          if (ts.isBlock(funcBody)) {
-            targetInsertPos = funcBody.getStart(sourceFile) + 1;
-            return;
-          } else {
-            const bodyStart = funcBody.getStart(sourceFile);
-            const bodyEnd = funcBody.getEnd();
-            const bodyText = funcBody.getText(sourceFile);
-            const blockified = `{\n${indent}${hc.value};\n${indent}return ${bodyText};\n}`;
-            updatedText =
-              updatedText.slice(0, bodyStart) +
-              blockified +
-              updatedText.slice(bodyEnd);
-            targetInsertPos = -1;
-            return;
-          }
-        }
-      }
-
-      ts.forEachChild(node, findComponentBody);
+    // If target already declares t, skip
+    if (target.declaresT) {
+      continue;
     }
 
-    findComponentBody(sourceFile);
+    // Target needs hook:
+    // If target calls t(...) or if it's the primary component (or targets.length === 1)
+    const shouldInject = target.callsT || targets.length === 1 || target.name !== undefined;
+    if (!shouldInject && targets.length > 1) {
+      continue;
+    }
 
-    if (targetInsertPos !== null && targetInsertPos !== -1) {
-      const insertion = `\n${indent}${hc.value};`;
-      updatedText =
-        updatedText.slice(0, targetInsertPos) +
-        insertion +
-        updatedText.slice(targetInsertPos);
-    } else if (targetInsertPos === null) {
-      warnings.push({
-        code: "HOOK_INJECTION_SKIPPED",
-        message: `Could not safely locate top-level React component body to inject hook: "${hc.value}"`,
-        file: toPosixPath(filePath),
+    const hookStmt = defaultHookValue.endsWith(";")
+      ? defaultHookValue
+      : `${defaultHookValue};`;
+
+    if (target.isConciseArrow) {
+      const bodyStart = target.body.getStart(sourceFile);
+      const bodyEnd = target.body.getEnd();
+      const bodyText = updatedText.slice(bodyStart, bodyEnd);
+      const blockified = `{\n  ${hookStmt}\n  return ${bodyText};\n}`;
+      edits.push({
+        start: bodyStart,
+        end: bodyEnd,
+        replacement: blockified,
+      });
+    } else {
+      const block = target.body as ts.Block;
+      const indent = detectIndentation(block, sourceFile);
+      const insertPos = block.getStart(sourceFile) + 1; // right after '{'
+      edits.push({
+        start: insertPos,
+        end: insertPos,
+        replacement: `\n${indent}${hookStmt}`,
       });
     }
+  }
+
+  // 2. Sort edits in descending order (highest offset first) so earlier offsets don't drift
+  edits.sort((a, b) => b.start - a.start);
+
+  for (const edit of edits) {
+    updatedText =
+      updatedText.slice(0, edit.start) +
+      edit.replacement +
+      updatedText.slice(edit.end);
   }
 
   return { updatedText, warnings, errors };
@@ -311,7 +619,12 @@ export function applySourceChangesToFile(
   warnings.push(...hookResult.warnings);
   errors.push(...hookResult.errors);
 
-  // 6. Validate resulting syntax using TypeScript parser
+  // 6. Safety net: Ensure i18n integrity
+  const primaryNamespace =
+    applicableChanges.find((sc) => sc.namespace)?.namespace || "common";
+  transformed = ensureI18nIntegrity(transformed, filePath, primaryNamespace);
+
+  // 7. Validate resulting syntax using TypeScript parser
   try {
     const checkFile = ts.createSourceFile(
       filePath,
@@ -346,4 +659,104 @@ export function applySourceChangesToFile(
     warnings,
     errors,
   };
+}
+
+/**
+ * Safety net pass: Verifies that no transformed file calling `t(...)`, `<Trans>`,
+ * or `i18n.t(...)` leaves the replacement pipeline without their required imports
+ * and in-scope declarations.
+ */
+export function ensureI18nIntegrity(
+  sourceText: string,
+  filePath: string,
+  defaultNamespace: string = "common"
+): string {
+  if (!/\.[jt]sx?$/i.test(filePath)) {
+    return sourceText;
+  }
+
+  let result = sourceText;
+
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    result,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
+      ? ts.ScriptKind.TSX
+      : ts.ScriptKind.TS
+  );
+
+  let callsT = false;
+  let callsTrans = false;
+  let callsI18nT = false;
+
+  function scanCalls(node: ts.Node) {
+    if (ts.isCallExpression(node)) {
+      const txt = node.expression.getText(sourceFile);
+      if (txt === "t") callsT = true;
+      if (txt === "i18n.t") callsI18nT = true;
+    }
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = node.tagName.getText(sourceFile);
+      if (tag === "Trans") callsTrans = true;
+    }
+    ts.forEachChild(node, scanCalls);
+  }
+  scanCalls(sourceFile);
+
+  const neededImports: CodeChange[] = [];
+
+  // Check useTranslation import
+  if (
+    callsT &&
+    !/import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(result)
+  ) {
+    neededImports.push({
+      type: "ADD_IMPORT",
+      value: "useTranslation",
+      module: "react-i18next",
+    });
+  }
+
+  // Check Trans import
+  if (
+    callsTrans &&
+    !/import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(result)
+  ) {
+    neededImports.push({
+      type: "ADD_IMPORT",
+      value: "Trans",
+      module: "react-i18next",
+    });
+  }
+
+  // Check i18n import
+  if (
+    callsI18nT &&
+    !/import\s+.*i18n.*from\s+['"].*['"]/.test(result)
+  ) {
+    neededImports.push({
+      type: "ADD_IMPORT",
+      value: "i18n",
+      module: "i18next",
+    });
+  }
+
+  if (neededImports.length > 0) {
+    result = injectRequiredImports(result, neededImports);
+  }
+
+  // Ensure every component calling t(...) has t declared
+  if (callsT) {
+    const hookResult = injectRequiredHooks(result, filePath, [
+      {
+        type: "ADD_HOOK",
+        value: `const { t } = useTranslation("${defaultNamespace}")`,
+      },
+    ]);
+    result = hookResult.updatedText;
+  }
+
+  return result;
 }

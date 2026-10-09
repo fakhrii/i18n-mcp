@@ -17,26 +17,31 @@ export function analyzeFileTranslationContext(
   fileContent: string,
   projectAccessPattern: string = "useTranslation"
 ): FileTranslationContext {
+  // Strip comments so commented-out imports don't lead to false positives
+  const strippedContent = fileContent
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+
   const hasUseTranslationImport =
     /import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
-      fileContent
+      strippedContent
     );
   const hasTransImport =
     /import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
-      fileContent
+      strippedContent
     );
   const hasI18nImport =
-    /import\s+.*i18n.*from\s+['"].*['"]/.test(fileContent);
+    /import\s+.*i18n.*from\s+['"].*['"]/.test(strippedContent);
 
   const boundNamespaces: string[] = [];
 
   // Match: useTranslation("auth") or useTranslation(['auth', 'common'])
-  const singleNsMatch = fileContent.match(/useTranslation\(\s*["']([^"']+)["']\s*\)/);
+  const singleNsMatch = strippedContent.match(/useTranslation\(\s*["']([^"']+)["']\s*\)/);
   if (singleNsMatch && singleNsMatch[1]) {
     boundNamespaces.push(singleNsMatch[1]);
   }
 
-  const multiNsMatch = fileContent.match(/useTranslation\(\s*\[([^\]]+)\]\s*\)/);
+  const multiNsMatch = strippedContent.match(/useTranslation\(\s*\[([^\]]+)\]\s*\)/);
   if (multiNsMatch && multiNsMatch[1]) {
     const rawList = multiNsMatch[1].split(",");
     for (const item of rawList) {
@@ -47,13 +52,18 @@ export function analyzeFileTranslationContext(
     }
   }
 
-  let accessPattern: "useTranslation" | "i18n.t" | "custom" | "none" = "none";
-  if (projectAccessPattern === "useTranslation" || hasUseTranslationImport || boundNamespaces.length > 0) {
+  let accessPattern: "useTranslation" | "i18n.t" | "custom" | "none" = "useTranslation";
+  if (
+    projectAccessPattern === "useTranslation" ||
+    projectAccessPattern === "t" ||
+    hasUseTranslationImport ||
+    boundNamespaces.length > 0
+  ) {
     accessPattern = "useTranslation";
   } else if (projectAccessPattern === "i18n.t" || hasI18nImport) {
     accessPattern = "i18n.t";
   } else if (projectAccessPattern && projectAccessPattern !== "none") {
-    accessPattern = "custom";
+    accessPattern = "useTranslation";
   }
 
   return {
@@ -76,15 +86,16 @@ export function buildReplacementExpression(
   fileContext: FileTranslationContext
 ): string {
   // Determine if namespace prefix is required:
-  // If file is bound to 'auth' and key is in 'common', prefix as 'common:KEY'
-  // If file is bound to 'auth' and key is in 'auth', no prefix needed: 'KEY'
-  // If no bound namespace in file and using useTranslation, check if namespace needs prefix
+  // In react-i18next, useTranslation(["ns1", "ns2"]) designates the FIRST namespace as default.
+  // Any secondary namespace requires prefixing as `${namespace}:${key}`.
   let keyExpression = key;
-  const isBoundToNs = fileContext.boundNamespaces.includes(namespace);
+  const isPrimaryNs =
+    fileContext.boundNamespaces.length > 0 &&
+    fileContext.boundNamespaces[0] === namespace;
 
   if (fileContext.accessPattern === "i18n.t") {
     keyExpression = `${namespace}:${key}`;
-  } else if (!isBoundToNs && fileContext.boundNamespaces.length > 0) {
+  } else if (!isPrimaryNs && fileContext.boundNamespaces.length > 0) {
     keyExpression = `${namespace}:${key}`;
   }
 
@@ -144,12 +155,15 @@ export function buildReplacementExpression(
  */
 export function determineRequiredCodeChanges(
   fileContext: FileTranslationContext,
-  targetNamespace: string,
+  targetNamespace: string | string[],
   hasRichText = false
 ): CodeChange[] {
   const changes: CodeChange[] = [];
+  const targetList = Array.isArray(targetNamespace)
+    ? targetNamespace
+    : [targetNamespace];
 
-  if (fileContext.accessPattern === "useTranslation") {
+  if (fileContext.accessPattern === "useTranslation" || fileContext.accessPattern === "custom") {
     if (!fileContext.hasUseTranslationImport) {
       changes.push({
         type: "ADD_IMPORT",
@@ -159,10 +173,26 @@ export function determineRequiredCodeChanges(
     }
 
     if (fileContext.boundNamespaces.length === 0) {
+      const hookVal =
+        targetList.length === 1
+          ? `const { t } = useTranslation("${targetList[0]}")`
+          : `const { t } = useTranslation([${targetList.map((ns) => `"${ns}"`).join(", ")}])`;
       changes.push({
         type: "ADD_HOOK",
-        value: `const { t } = useTranslation("${targetNamespace}")`,
+        value: hookVal,
       });
+    } else {
+      const missing = targetList.filter(
+        (ns) => !fileContext.boundNamespaces.includes(ns)
+      );
+      if (missing.length > 0) {
+        const merged = [...fileContext.boundNamespaces, ...missing];
+        const hookVal = `const { t } = useTranslation([${merged.map((ns) => `"${ns}"`).join(", ")}])`;
+        changes.push({
+          type: "UPDATE_HOOK",
+          value: hookVal,
+        });
+      }
     }
   } else if (fileContext.accessPattern === "i18n.t") {
     if (!fileContext.hasI18nImport) {

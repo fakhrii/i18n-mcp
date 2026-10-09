@@ -3,6 +3,9 @@ import {
   classifyString,
   isUserFacingClassification,
   getConfidenceLevel,
+  isMockVariableName,
+  isMockFilePath,
+  isPlaceholderOrMockText,
 } from "../../src/core/classifier/classifier.js";
 
 describe("Classifier & Confidence Engine", () => {
@@ -390,6 +393,95 @@ describe("Classifier & Confidence Engine", () => {
     expect(getConfidenceLevel(0.84)).toBe("MEDIUM");
     expect(getConfidenceLevel(0.50)).toBe("MEDIUM");
     expect(getConfidenceLevel(0.49)).toBe("LOW");
+  });
+
+  describe("Mock Data & Test Fixture Invariants", () => {
+    it("identifies mock variable names accurately", () => {
+      expect(isMockVariableName("MOCK_USERS")).toBe(true);
+      expect(isMockVariableName("mockData")).toBe(true);
+      expect(isMockVariableName("mockFeed")).toBe(true);
+      expect(isMockVariableName("dummyNotifications")).toBe(true);
+      expect(isMockVariableName("fakeProducts")).toBe(true);
+      expect(isMockVariableName("sampleItems")).toBe(true);
+      expect(isMockVariableName("feedStub")).toBe(true);
+      expect(isMockVariableName("testUserData")).toBe(true);
+      expect(isMockVariableName("fixtureData")).toBe(true);
+
+      // Real production variables
+      expect(isMockVariableName("userProfile")).toBe(false);
+      expect(isMockVariableName("notificationList")).toBe(false);
+      expect(isMockVariableName("settings")).toBe(false);
+      expect(isMockVariableName("cartItems")).toBe(false);
+    });
+
+    it("identifies mock file paths accurately", () => {
+      expect(isMockFilePath("src/mocks/users.ts")).toBe(true);
+      expect(isMockFilePath("src/__mocks__/api.ts")).toBe(true);
+      expect(isMockFilePath("src/fixtures/orders.json")).toBe(true);
+      expect(isMockFilePath("src/components/Button.stories.tsx")).toBe(true);
+      expect(isMockFilePath("src/data/mockData.ts")).toBe(true);
+      expect(isMockFilePath("src/data/dummyData.js")).toBe(true);
+      expect(isMockFilePath("src/stubs/service.ts")).toBe(true);
+
+      // Real production files
+      expect(isMockFilePath("src/screens/HomeScreen.tsx")).toBe(false);
+      expect(isMockFilePath("src/components/Header.tsx")).toBe(false);
+      expect(isMockFilePath("src/features/auth/LoginScreen.tsx")).toBe(false);
+    });
+
+    it("identifies placeholder and mock text patterns", () => {
+      expect(isPlaceholderOrMockText("Lorem ipsum dolor sit amet")).toBe(true);
+      expect(isPlaceholderOrMockText("John Doe")).toBe(true);
+      expect(isPlaceholderOrMockText("Jane Doe")).toBe(true);
+      expect(isPlaceholderOrMockText("Foo Bar")).toBe(true);
+      expect(isPlaceholderOrMockText("test@example.com")).toBe(true);
+      expect(isPlaceholderOrMockText("555-0199")).toBe(true);
+      expect(isPlaceholderOrMockText("Sample title")).toBe(true);
+      expect(isPlaceholderOrMockText("Mock description")).toBe(true);
+
+      // Real user-facing texts
+      expect(isPlaceholderOrMockText("Welcome back to your dashboard")).toBe(false);
+      expect(isPlaceholderOrMockText("Please enter your password")).toBe(false);
+      expect(isPlaceholderOrMockText("Save Changes")).toBe(false);
+    });
+
+    it("classifies strings inside mock variables as TEST_DATA and non-user-facing", () => {
+      const res = classifyString({
+        text: "John Doe",
+        astType: "OBJECT_PROPERTY",
+        propName: "name",
+        variableName: "MOCK_USERS",
+      });
+
+      expect(res.classification).toBe("TEST_DATA");
+      expect(res.isUserFacing).toBe(false);
+      expect(res.semanticRole).toBe("CONFIRMED_TECHNICAL");
+      expect(res.confidence).toBeGreaterThanOrEqual(0.95);
+    });
+
+    it("classifies strings in mock files as TEST_DATA and non-user-facing", () => {
+      const res = classifyString({
+        text: "Sample Card Title",
+        astType: "OBJECT_PROPERTY",
+        propName: "title",
+        filePath: "src/mocks/cards.ts",
+      });
+
+      expect(res.classification).toBe("TEST_DATA");
+      expect(res.isUserFacing).toBe(false);
+      expect(res.semanticRole).toBe("CONFIRMED_TECHNICAL");
+    });
+
+    it("classifies placeholder text as TEST_DATA and non-user-facing", () => {
+      const res = classifyString({
+        text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+        astType: "STRING_LITERAL",
+      });
+
+      expect(res.classification).toBe("TEST_DATA");
+      expect(res.isUserFacing).toBe(false);
+      expect(res.semanticRole).toBe("CONFIRMED_TECHNICAL");
+    });
   });
 });
 
