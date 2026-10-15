@@ -48,17 +48,23 @@ export function resolveSuggestedNamespace(
 
   // 3. Extract feature folder conventions:
   // e.g. src/features/<feature>/..., features/<feature>/..., src/screens/<feature>/...
-  const featureMatch = posixPath.match(
-    /(?:^|\/)(?:features|modules|domains|screens|pages|views)\/([^/]+)/
+  const folderMatch = posixPath.match(
+    /(?:^|\/)(?:features|modules|domains|screens|pages|views)\/([^/]+)\//
   );
-  if (featureMatch && featureMatch[1]) {
-    const candidate = featureMatch[1].toLowerCase();
-    // If candidate exists in knownNamespaces, return it
-    if (knownNamespaces.includes(candidate)) {
-      return candidate;
-    }
-    // Even if not in knownNamespaces yet, suggest it as the new feature namespace
+  if (folderMatch && folderMatch[1]) {
+    const candidate = folderMatch[1].toLowerCase();
     return candidate;
+  }
+
+  // Direct file inside features/screens/pages (e.g. src/screens/HomeScreen.tsx)
+  const directFileMatch = posixPath.match(
+    /(?:^|\/)(?:features|modules|domains|screens|pages|views)\/([^/]+)$/
+  );
+  if (directFileMatch && directFileMatch[1]) {
+    const baseName = directFileMatch[1].replace(/\.[a-zA-Z0-9]+$/, "").toLowerCase();
+    if (knownNamespaces.includes(baseName)) {
+      return baseName;
+    }
   }
 
   // 4. Shared components folder -> "common"

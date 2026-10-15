@@ -1,11 +1,15 @@
 import type { DetectedString } from "../../models/scanner.js";
 import type { CodeChange, SourceChangePlan } from "../../models/plan.js";
+import type { I18nStructureType } from "../../models/project.js";
 
 export interface FileTranslationContext {
   filePath: string;
   hasUseTranslationImport: boolean;
   hasTransImport?: boolean;
   hasI18nImport: boolean;
+  hasUseTranslationCall?: boolean;
+  hasAppLocalizationsImport?: boolean;
+  hasL10nAccessor?: boolean;
   boundNamespaces: string[];
   accessPattern: "useTranslation" | "i18n.t" | "custom" | "none";
 }
@@ -17,26 +21,41 @@ export function analyzeFileTranslationContext(
   fileContent: string,
   projectAccessPattern: string = "useTranslation"
 ): FileTranslationContext {
+  // Strip comments so commented-out imports don't lead to false positives
+  const strippedContent = fileContent
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+
   const hasUseTranslationImport =
     /import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
-      fileContent
+      strippedContent
     );
   const hasTransImport =
     /import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
-      fileContent
+      strippedContent
     );
   const hasI18nImport =
-    /import\s+.*i18n.*from\s+['"].*['"]/.test(fileContent);
+    /import\s+.*i18n.*from\s+['"].*['"]/.test(strippedContent);
+
+  const hasUseTranslationCall = /useTranslation\s*\(/.test(strippedContent);
+
+  const hasAppLocalizationsImport =
+    strippedContent.includes("app_localizations.dart") ||
+    strippedContent.includes("AppLocalizations");
+  const hasL10nAccessor =
+    /\bfinal\s+l10n\s*=/.test(strippedContent) ||
+    /\bvar\s+l10n\s*=/.test(strippedContent) ||
+    /\bl10n\s*=/.test(strippedContent);
 
   const boundNamespaces: string[] = [];
 
   // Match: useTranslation("auth") or useTranslation(['auth', 'common'])
-  const singleNsMatch = fileContent.match(/useTranslation\(\s*["']([^"']+)["']\s*\)/);
+  const singleNsMatch = strippedContent.match(/useTranslation\(\s*["']([^"']+)["']\s*\)/);
   if (singleNsMatch && singleNsMatch[1]) {
     boundNamespaces.push(singleNsMatch[1]);
   }
 
-  const multiNsMatch = fileContent.match(/useTranslation\(\s*\[([^\]]+)\]\s*\)/);
+  const multiNsMatch = strippedContent.match(/useTranslation\(\s*\[([^\]]+)\]\s*\)/);
   if (multiNsMatch && multiNsMatch[1]) {
     const rawList = multiNsMatch[1].split(",");
     for (const item of rawList) {
@@ -47,13 +66,18 @@ export function analyzeFileTranslationContext(
     }
   }
 
-  let accessPattern: "useTranslation" | "i18n.t" | "custom" | "none" = "none";
-  if (projectAccessPattern === "useTranslation" || hasUseTranslationImport || boundNamespaces.length > 0) {
+  let accessPattern: "useTranslation" | "i18n.t" | "custom" | "none" = "useTranslation";
+  if (
+    projectAccessPattern === "useTranslation" ||
+    projectAccessPattern === "t" ||
+    hasUseTranslationImport ||
+    boundNamespaces.length > 0
+  ) {
     accessPattern = "useTranslation";
   } else if (projectAccessPattern === "i18n.t" || hasI18nImport) {
     accessPattern = "i18n.t";
   } else if (projectAccessPattern && projectAccessPattern !== "none") {
-    accessPattern = "custom";
+    accessPattern = "useTranslation";
   }
 
   return {
@@ -61,6 +85,9 @@ export function analyzeFileTranslationContext(
     hasUseTranslationImport,
     hasTransImport,
     hasI18nImport,
+    hasUseTranslationCall,
+    hasAppLocalizationsImport,
+    hasL10nAccessor,
     boundNamespaces,
     accessPattern,
   };
@@ -73,19 +100,52 @@ export function buildReplacementExpression(
   item: DetectedString,
   namespace: string,
   key: string,
-  fileContext: FileTranslationContext
+  fileContext: FileTranslationContext,
+  structureType: I18nStructureType = "namespaces"
 ): string {
-  // Determine if namespace prefix is required:
-  // If file is bound to 'auth' and key is in 'common', prefix as 'common:KEY'
-  // If file is bound to 'auth' and key is in 'auth', no prefix needed: 'KEY'
-  // If no bound namespace in file and using useTranslation, check if namespace needs prefix
-  let keyExpression = key;
-  const isBoundToNs = fileContext.boundNamespaces.includes(namespace);
+  // Dart Flutter replacement syntax
+  if (item.file?.endsWith(".dart") || fileContext.filePath?.endsWith(".dart")) {
+    const accessor = fileContext.hasL10nAccessor ? "l10n" : "AppLocalizations.of(context)!";
+    if (item.variables && item.variables.length > 0) {
+      const vars = item.variables.map((v) => {
+        const expr = item.variableExpressions?.[v];
+        return expr || v;
+      });
+      return `${accessor}.${key}(${vars.join(", ")})`;
+    }
+    return `${accessor}.${key}`;
+  }
 
-  if (fileContext.accessPattern === "i18n.t") {
-    keyExpression = `${namespace}:${key}`;
-  } else if (!isBoundToNs && fileContext.boundNamespaces.length > 0) {
-    keyExpression = `${namespace}:${key}`;
+  let keyExpression = key;
+
+  if (structureType === "nested") {
+    // In nested structure, keys are accessed via dot notation: t("auth.login")
+    if (namespace && namespace !== "translation" && namespace !== "default") {
+      if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
+        keyExpression = key;
+      } else {
+        keyExpression = `${namespace}.${key}`;
+      }
+    } else {
+      keyExpression = key;
+    }
+  } else if (structureType === "flat") {
+    // In flat structure, keys are direct: t("login")
+    keyExpression = key;
+  } else {
+    // In namespaces structure:
+    // Determine if namespace prefix is required:
+    // In react-i18next, useTranslation(["ns1", "ns2"]) designates the FIRST namespace as default.
+    // Any secondary namespace requires prefixing as `${namespace}:${key}`.
+    const isPrimaryNs =
+      fileContext.boundNamespaces.length > 0 &&
+      fileContext.boundNamespaces[0] === namespace;
+
+    if (fileContext.accessPattern === "i18n.t") {
+      keyExpression = `${namespace}:${key}`;
+    } else if (!isPrimaryNs && fileContext.boundNamespaces.length > 0) {
+      keyExpression = `${namespace}:${key}`;
+    }
   }
 
   if (item.isRichText) {
@@ -144,12 +204,27 @@ export function buildReplacementExpression(
  */
 export function determineRequiredCodeChanges(
   fileContext: FileTranslationContext,
-  targetNamespace: string,
-  hasRichText = false
+  targetNamespace: string | string[],
+  hasRichText = false,
+  structureType: I18nStructureType = "namespaces"
 ): CodeChange[] {
   const changes: CodeChange[] = [];
+  if (fileContext.filePath?.endsWith(".dart")) {
+    if (!fileContext.hasAppLocalizationsImport) {
+      changes.push({
+        type: "ADD_IMPORT",
+        value: "AppLocalizations",
+        module: "package:flutter_gen/gen_l10n/app_localizations.dart",
+      });
+    }
+    return changes;
+  }
 
-  if (fileContext.accessPattern === "useTranslation") {
+  const targetList = Array.isArray(targetNamespace)
+    ? targetNamespace
+    : [targetNamespace];
+
+  if (fileContext.accessPattern === "useTranslation" || fileContext.accessPattern === "custom") {
     if (!fileContext.hasUseTranslationImport) {
       changes.push({
         type: "ADD_IMPORT",
@@ -158,11 +233,36 @@ export function determineRequiredCodeChanges(
       });
     }
 
-    if (fileContext.boundNamespaces.length === 0) {
-      changes.push({
-        type: "ADD_HOOK",
-        value: `const { t } = useTranslation("${targetNamespace}")`,
-      });
+    if (structureType === "nested" || structureType === "flat") {
+      if (!fileContext.hasUseTranslationCall && fileContext.boundNamespaces.length === 0) {
+        changes.push({
+          type: "ADD_HOOK",
+          value: "const { t } = useTranslation()",
+        });
+      }
+    } else {
+      if (fileContext.boundNamespaces.length === 0) {
+        const hookVal =
+          targetList.length === 1
+            ? `const { t } = useTranslation("${targetList[0]}")`
+            : `const { t } = useTranslation([${targetList.map((ns) => `"${ns}"`).join(", ")}])`;
+        changes.push({
+          type: "ADD_HOOK",
+          value: hookVal,
+        });
+      } else {
+        const missing = targetList.filter(
+          (ns) => !fileContext.boundNamespaces.includes(ns)
+        );
+        if (missing.length > 0) {
+          const merged = [...fileContext.boundNamespaces, ...missing];
+          const hookVal = `const { t } = useTranslation([${merged.map((ns) => `"${ns}"`).join(", ")}])`;
+          changes.push({
+            type: "UPDATE_HOOK",
+            value: hookVal,
+          });
+        }
+      }
     }
   } else if (fileContext.accessPattern === "i18n.t") {
     if (!fileContext.hasI18nImport) {
@@ -197,9 +297,11 @@ export function planSourceChange(
     confidenceThreshold?: number;
     includeAmbiguous?: boolean;
     candidateDecisions?: Record<string, boolean>;
+    structureType?: I18nStructureType;
   }
 ): SourceChangePlan {
   const threshold = options?.confidenceThreshold ?? 0.7;
+  const structureType = options?.structureType ?? "namespaces";
 
   // Check if explicit decision was provided by Agent / user
   const candidateId = item.id || `${item.file}:${item.line}:${item.column}`;
@@ -243,7 +345,7 @@ export function planSourceChange(
         endColumn: item.endColumn,
       },
       source: item.rawText || item.text,
-      replacement: buildReplacementExpression(item, namespace, key, fileContext),
+      replacement: buildReplacementExpression(item, namespace, key, fileContext, structureType),
       namespace,
       key,
       confidence: item.confidence,
@@ -268,7 +370,7 @@ export function planSourceChange(
         endColumn: item.endColumn,
       },
       source: item.rawText || item.text,
-      replacement: buildReplacementExpression(item, namespace, key, fileContext),
+      replacement: buildReplacementExpression(item, namespace, key, fileContext, structureType),
       namespace,
       key,
       confidence: item.confidence,
@@ -280,7 +382,8 @@ export function planSourceChange(
   const requiredCodeChanges = determineRequiredCodeChanges(
     fileContext,
     namespace,
-    item.isRichText
+    item.isRichText,
+    structureType
   );
 
   return {
@@ -293,7 +396,7 @@ export function planSourceChange(
       endColumn: item.endColumn,
     },
     source: item.rawText || item.text,
-    replacement: buildReplacementExpression(item, namespace, key, fileContext),
+    replacement: buildReplacementExpression(item, namespace, key, fileContext, structureType),
     namespace,
     key,
     confidence: item.confidence,

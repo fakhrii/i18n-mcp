@@ -98,6 +98,58 @@ export function isOnlyVariablesAndPunctuation(text: string): boolean {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Mock Data & Placeholder Detection Patterns
+// ---------------------------------------------------------------------------
+const MOCK_VAR_PREFIX_REGEX =
+  /^(?:mock|dummy|fake|sample|stub|test|fixture|_mock|_dummy|_fake)/i;
+const MOCK_VAR_SUFFIX_REGEX =
+  /(?:Mock|Dummy|Fake|Sample|Stub|Fixture|TestData|Mocks|Dummies)(?:Data|Items|List|Array|Users|Posts|Feed|Response|Config|State|Options)?$/i;
+const MOCK_CONST_REGEX =
+  /^(?:MOCK_|DUMMY_|SAMPLE_|FAKE_|STUB_|TEST_DATA_|FIXTURE_)/;
+
+export function isMockVariableName(varName?: string): boolean {
+  if (!varName) return false;
+  return (
+    MOCK_VAR_PREFIX_REGEX.test(varName) ||
+    MOCK_VAR_SUFFIX_REGEX.test(varName) ||
+    MOCK_CONST_REGEX.test(varName)
+  );
+}
+
+const MOCK_DIR_REGEX =
+  /(?:^|[\\/])(?:__mocks__|mocks|mock|mockData|mock-data|fixtures|__fixtures__|stubs|stories)(?:[\\/]|$)/i;
+const MOCK_FILE_REGEX =
+  /(?:\.mock|\.mocks|\.fixture|\.fixtures|\.story|\.stories|mockData|dummyData)\.[a-zA-Z0-9]+$/i;
+
+export function isMockFilePath(filePath?: string): boolean {
+  if (!filePath) return false;
+  return MOCK_DIR_REGEX.test(filePath) || MOCK_FILE_REGEX.test(filePath);
+}
+
+const LOREM_IPSUM_REGEX =
+  /^(?:lorem\s+ipsum|dolor\s+sit\s+amet|consectetur\s+adipiscing|sed\s+do\s+eiusmod)/i;
+const PLACEHOLDER_NAME_REGEX =
+  /^(?:(?:john|jane)\s+doe|foo\s+bar|baz\s+qux|test\s+user|sample\s+user|dummy\s+user)$/i;
+const PLACEHOLDER_EMAIL_REGEX =
+  /^[a-zA-Z0-9._%+-]+@(?:example|test|sample|dummy|foo|fake)\.(?:com|org|net|io)$/i;
+const PLACEHOLDER_PHONE_REGEX =
+  /^(?:\+?1[-.\s]?)?(?:\(?555\)?[-.\s]?\d{3}[-.\s]?\d{4}|555[-.\s]?\d{4}|123[-.\s]?456[-.\s]?7890)$/;
+const PLACEHOLDER_GENERIC_TEXT =
+  /^(?:sample|dummy|mock|test)\s+(?:title|text|data|item|description|content|message|label|card|post|comment|notification)$/i;
+
+export function isPlaceholderOrMockText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return (
+    LOREM_IPSUM_REGEX.test(trimmed) ||
+    PLACEHOLDER_NAME_REGEX.test(trimmed) ||
+    PLACEHOLDER_EMAIL_REGEX.test(trimmed) ||
+    PLACEHOLDER_PHONE_REGEX.test(trimmed) ||
+    PLACEHOLDER_GENERIC_TEXT.test(trimmed)
+  );
+}
+
 export function isScreamingSnakeCase(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || /\s/.test(trimmed)) return false;
@@ -353,6 +405,8 @@ export interface ClassifyParams {
   isSwitchCase?: boolean;
   isObjectKey?: boolean;
   isStyleContext?: boolean;
+  variableName?: string;
+  filePath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -368,10 +422,46 @@ export function classifyString(params: ClassifyParams): ClassificationResult {
     isComparison,
     isSwitchCase,
     isStyleContext,
+    variableName,
+    filePath,
   } = params;
 
   const trimmed = text.trim();
   const startsWithCapital = /^[A-Z]/.test(trimmed);
+
+  // --- Step 1a: Mock Data & Test Fixture Invariants ---
+  if (variableName && isMockVariableName(variableName)) {
+    return {
+      classification: "TEST_DATA",
+      confidence: 0.98,
+      confidenceLevel: "HIGH",
+      semanticRole: "CONFIRMED_TECHNICAL",
+      reason: `Enclosing variable is a mock data structure (${variableName})`,
+      isUserFacing: false,
+    };
+  }
+
+  if (filePath && isMockFilePath(filePath)) {
+    return {
+      classification: "TEST_DATA",
+      confidence: 0.99,
+      confidenceLevel: "HIGH",
+      semanticRole: "CONFIRMED_TECHNICAL",
+      reason: `File path indicates mock/test fixture (${filePath})`,
+      isUserFacing: false,
+    };
+  }
+
+  if (isPlaceholderOrMockText(trimmed)) {
+    return {
+      classification: "TEST_DATA",
+      confidence: 0.95,
+      confidenceLevel: "HIGH",
+      semanticRole: "CONFIRMED_TECHNICAL",
+      reason: `Placeholder or mock content pattern ("${trimmed.length > 30 ? trimmed.slice(0, 30) + '...' : trimmed}")`,
+      isUserFacing: false,
+    };
+  }
 
   // --- Step 1: Syntactic Invariants & Universal Non-Text Checks ---
   if (!trimmed || PURE_SYMBOLS_REGEX.test(trimmed)) {

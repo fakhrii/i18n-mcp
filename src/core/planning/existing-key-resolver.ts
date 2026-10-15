@@ -5,8 +5,10 @@ import {
   fileExists,
   listFiles,
   readJsonFile,
+  readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
+import { isArbFile, parseArb } from "../locale/arb-handler.js";
 
 export interface ExistingTranslationItem {
   namespace: string;
@@ -183,6 +185,40 @@ export async function loadExistingTranslations(
   const fullLocaleDir = path.join(projectRoot, localeDirectory);
   if (!(await dirExists(fullLocaleDir))) {
     return { items, byNamespace, commonItems };
+  }
+
+  // Check for ARB files in localeDirectory (e.g. lib/l10n/app_en.arb)
+  const dirFiles = await listFiles(fullLocaleDir);
+  const arbFiles = dirFiles.filter((f) => isArbFile(f));
+  for (const arbFile of arbFiles) {
+    const rawName = path.basename(arbFile, ".arb");
+    const localeName = rawName.replace(/^(app_|intl_)/, "") || rawName;
+    if (localeName === sourceLocale || rawName === sourceLocale || arbFiles.length === 1) {
+      const fullArbPath = path.join(fullLocaleDir, arbFile);
+      const arbContent = await readTextFile(fullArbPath);
+      if (arbContent) {
+        try {
+          const arb = parseArb(arbContent);
+          const ns = rawName;
+          const nsMap = byNamespace.get(ns) || new Map<string, string>();
+          byNamespace.set(ns, nsMap);
+          for (const [k, v] of arb.entries.entries()) {
+            nsMap.set(k, v);
+            const item: ExistingTranslationItem = {
+              namespace: ns,
+              key: k,
+              value: v,
+              normalizedValue: normalizeText(v),
+              sourceFile: toPosixPath(path.relative(projectRoot, fullArbPath)),
+            };
+            items.push(item);
+            commonItems.push(item);
+          }
+        } catch {
+          // ignore malformed arb
+        }
+      }
+    }
   }
 
   // Check subfolder per locale: e.g. locales/en/*.json

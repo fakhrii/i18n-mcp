@@ -37,6 +37,25 @@ This skill orchestrates the end-to-end internationalization pipeline across **Re
 - *"Internationalize this feature"* $\rightarrow$ Scopes to the feature directory containing the active file.
 - *"Find and replace all hardcoded user-facing strings in this folder"* $\rightarrow$ Scopes to the directory of the active file.
 - *"Internationalize checkout and translate to French and Arabic"* $\rightarrow$ `scope: ['src/features/checkout']`, `translate: true`, `targetLocales: ['fr', 'ar']`.
+- *"Internationalize using nested structure"* $\rightarrow$ `structure: 'nested'`.
+
+---
+
+## Automatic Structure Detection (`structureType`)
+
+The migration engine automatically detects your codebase's i18n architectural pattern:
+- **`"nested"` (Single-file hierarchical JSON)**: Single file per locale (e.g. `locales/en.json`) with nested objects (`{ "auth": { "login": "..." }, "common": { "save": "..." } }`).
+  - Components invoke: `const { t } = useTranslation();` (no namespace arguments).
+  - Keys referenced via dot notation: `t("auth.login")` and `t("common.save")` (never colons).
+  - All translations are placed hierarchically into `locales/en.json`.
+- **`"namespaces"` (Multi-file namespace bundles)**: Separate JSON files per namespace (e.g. `locales/en/common.json`, `locales/en/auth.json`).
+  - Components invoke: `const { t } = useTranslation(["auth", "common"]);`
+  - Primary namespace keys: `t("login")`; secondary namespace keys: `t("common:save")` (with colon).
+  - Translations are written to separate `locales/en/<namespace>.json` files.
+- **`"flat"` (Flat single-file JSON or Flutter ARB)**: Flat dictionary without nesting (e.g. `locales/en.json` or `lib/l10n/app_en.arb`).
+  - Keys referenced directly: `t("login")`.
+
+Can be explicitly overridden via `--structure=nested`, `--structure=namespaces`, or `--structure=flat`.
 
 ---
 
@@ -70,6 +89,7 @@ If the scan or plan contains items with `semanticRole: "AMBIGUOUS"`:
 - Inspect the candidates:
   - UI labels / actions (e.g. `<Button action="Save" />`) $\rightarrow$ Approve (`true`).
   - Technical tokens / IDs / styles (e.g. `mode="dark"`) $\rightarrow$ Skip (`false`).
+  - Mock data / test fixtures / dummy samples (e.g. `const MOCK_ITEMS = ...`, sample data, fixtures) $\rightarrow$ Skip (`false`). Never extract or translate mock data!
 - Bundle decisions into `candidateDecisions: { "<candidate-id>": true/false }` for subsequent calls.
 
 ### Step 4: Present Results to Developer
@@ -107,3 +127,20 @@ Re-invoke the MCP tool with:
 }
 ```
 Present the final applied report and validation results.
+
+---
+
+## Reverting Changes or Excluding Mock Data
+
+If the developer indicates that mock data, dummy text, or unwanted files were modified:
+
+1. **Reverting Changes via Git**:
+   - Revert modified files: `git checkout -- <file>` or `git restore <file>`
+   - Revert entire directory: `git restore <directory>`
+2. **Reverting Changes via Backup (`createBackup: true`)**:
+   - Restore the `.bak` file created next to the modified source file (e.g. `cp src/Screen.tsx.bak src/Screen.tsx`).
+3. **Excluding Mock Files on Next Run**:
+   - Pass explicit exclusions to the tool:
+     `--exclude="**/mocks/**,**/*.mock.*,**/fixtures/**,**/*.stories.*"`
+   - Or target the specific component file directly rather than a broad folder:
+     `/internationalize src/screens/HomeScreen.tsx`

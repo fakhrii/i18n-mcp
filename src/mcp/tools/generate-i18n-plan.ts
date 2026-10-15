@@ -53,6 +53,12 @@ export const generateI18nPlanSchema = {
     .describe(
       "Optional map of candidate ID (or text) to boolean decision (true = include as user-facing, false = skip as technical) for resolving ambiguous strings."
     ),
+  structure: z
+    .enum(["namespaces", "nested", "flat"])
+    .optional()
+    .describe(
+      "Optional i18n structure type override ('namespaces', 'nested', or 'flat'). Auto-detected by default."
+    ),
 };
 
 export function registerGenerateI18nPlanTool(server: McpServer): void {
@@ -71,6 +77,7 @@ export function registerGenerateI18nPlanTool(server: McpServer): void {
       confidenceThreshold,
       includeAmbiguous,
       candidateDecisions,
+      structure,
     }) => {
       const targetPath = pathAlias || projectPath;
       logger.info(`Invoking generate_i18n_plan for path: ${targetPath || "."}`);
@@ -85,6 +92,7 @@ export function registerGenerateI18nPlanTool(server: McpServer): void {
           confidenceThreshold: confidenceThreshold ?? 0.7,
           includeAmbiguous: includeAmbiguous ?? false,
           candidateDecisions,
+          structure,
         });
 
         // Generate concise human-readable summary

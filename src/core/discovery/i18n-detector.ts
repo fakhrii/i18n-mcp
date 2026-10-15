@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type {
   I18nDetection,
   I18nLibraryType,
+  I18nStructureType,
   ConfigWarning,
 } from "../../models/project.js";
 import type { I18nMcpConfig } from "../../models/config.js";
@@ -42,6 +43,7 @@ const COMMON_CONFIG_FILES = [
   "src/utils/i18n.js",
   "i18n.ts",
   "i18n.js",
+  "l10n.yaml",
 ];
 
 export interface I18nDiscoveryResult {
@@ -49,6 +51,7 @@ export interface I18nDiscoveryResult {
   namespaces: string[];
   accessPatterns: string[];
   warnings: ConfigWarning[];
+  structureType: I18nStructureType;
 }
 
 export interface CodeI18nConfig {
@@ -173,6 +176,8 @@ export async function detectI18n(
     library = "react-i18next";
   } else if ("i18next" in allDependencies) {
     library = "i18next";
+  } else if ("flutter_localizations" in allDependencies) {
+    library = "flutter_localizations";
   }
 
   // 2. Detect Config File in project
@@ -238,11 +243,19 @@ export async function detectI18n(
   const namespacesSet: Set<string> = new Set();
   const localeNamespacesMap: Map<string, Set<string>> = new Map();
 
+  let hasSubdirs = false;
+  let hasMultipleJsonPerSubdir = false;
+  let hasSingleTranslationJson = false;
+  let hasSingleJsonFiles = false;
+  let singleJsonHasNestedObjects = false;
+  let hasArbFiles = false;
+
   if (localeDirectory) {
     const fullLocalePath = path.join(projectRoot, localeDirectory);
     const subdirs = await listDirectories(fullLocalePath);
 
     if (subdirs.length > 0) {
+      hasSubdirs = true;
       // Structure: locales/<locale>/<namespace>.json
       for (const localeName of subdirs) {
         if (localeName.startsWith(".") || localeName === "node_modules") continue;
@@ -251,20 +264,37 @@ export async function detectI18n(
 
         const localeSubdirPath = path.join(fullLocalePath, localeName);
         const files = await listFiles(localeSubdirPath);
-        for (const f of files) {
-          if (f.endsWith(".json")) {
-            const ns = path.basename(f, ".json");
-            namespacesSet.add(ns);
-            nsSet.add(ns);
+        const jsonFiles = files.filter((f) => f.endsWith(".json"));
 
-            const jsonContent = await readJsonFile(path.join(localeSubdirPath, f));
-            if (jsonContent === null) {
-              warnings.push({
-                code: "MALFORMED_JSON",
-                message: `Failed to parse JSON file in ${toPosixPath(path.join(localeDirectory, localeName, f))}`,
-                severity: "error",
-                file: toPosixPath(path.join(localeDirectory, localeName, f)),
-              });
+        if (jsonFiles.length > 1) {
+          hasMultipleJsonPerSubdir = true;
+        } else if (
+          jsonFiles.length === 1 &&
+          (jsonFiles[0] === "translation.json" || jsonFiles[0] === `${localeName}.json`)
+        ) {
+          hasSingleTranslationJson = true;
+        }
+
+        for (const f of jsonFiles) {
+          const ns = path.basename(f, ".json");
+          namespacesSet.add(ns);
+          nsSet.add(ns);
+
+          const jsonContent = await readJsonFile<Record<string, unknown>>(
+            path.join(localeSubdirPath, f)
+          );
+          if (jsonContent === null) {
+            warnings.push({
+              code: "MALFORMED_JSON",
+              message: `Failed to parse JSON file in ${toPosixPath(path.join(localeDirectory, localeName, f))}`,
+              severity: "error",
+              file: toPosixPath(path.join(localeDirectory, localeName, f)),
+            });
+          } else if (typeof jsonContent === "object" && jsonContent !== null) {
+            for (const [, val] of Object.entries(jsonContent)) {
+              if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+                singleJsonHasNestedObjects = true;
+              }
             }
           }
         }
@@ -275,11 +305,16 @@ export async function detectI18n(
       const files = await listFiles(fullLocalePath);
       for (const f of files) {
         if (f.endsWith(".arb")) {
+          hasArbFiles = true;
+          if (library === "none") {
+            library = "flutter_localizations";
+          }
           const rawName = path.basename(f, ".arb");
           const localeName = rawName.replace(/^(app_|intl_)/, "") || rawName;
           detectedLocales.push(localeName);
           namespacesSet.add(rawName);
         } else if (f.endsWith(".json")) {
+          hasSingleJsonFiles = true;
           const localeName = path.basename(f, ".json");
           detectedLocales.push(localeName);
           const jsonContent = await readJsonFile<Record<string, unknown>>(
@@ -295,6 +330,7 @@ export async function detectI18n(
           } else if (typeof jsonContent === "object" && jsonContent !== null) {
             for (const [key, val] of Object.entries(jsonContent)) {
               if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+                singleJsonHasNestedObjects = true;
                 namespacesSet.add(key);
               }
             }
@@ -376,7 +412,7 @@ export async function detectI18n(
   }
 
   // 10. Detect Translation Access Patterns in source code
-  const sourceFiles = await findFilesByGlob("src/**/*.{ts,tsx,js,jsx}", projectRoot, [
+  const sourceFiles = await findFilesByGlob("{src,lib}/**/*.{ts,tsx,js,jsx,dart}", projectRoot, [
     "**/node_modules/**",
     "**/dist/**",
     "**/__tests__/**",
@@ -389,17 +425,67 @@ export async function detectI18n(
     const content = await readTextFile(path.join(projectRoot, relPath));
     if (!content) continue;
 
+    if (content.includes("AppLocalizations.of") || /\bl10n\./.test(content)) {
+      accessPatterns.add("AppLocalizations");
+    }
     if (content.includes("useTranslation")) {
       accessPatterns.add("useTranslation");
+      if (/useTranslation\(\s*['"\[]/.test(content)) {
+        accessPatterns.add("useTranslation:ns");
+      } else if (/useTranslation\(\s*\)/.test(content)) {
+        accessPatterns.add("useTranslation:none");
+      }
     }
     if (/\bt\s*\(/.test(content)) {
       accessPatterns.add("t");
+      if (/\bt\(\s*['"][a-zA-Z0-9_-]+:[a-zA-Z0-9_.-]+['"]/.test(content)) {
+        accessPatterns.add("t:colon");
+      }
+      if (/\bt\(\s*['"][a-zA-Z0-9_-]+\.[a-zA-Z0-9_.-]+['"]/.test(content)) {
+        accessPatterns.add("t:dot");
+      }
     }
     if (/i18n\.t\s*\(/.test(content)) {
       accessPatterns.add("i18n.t");
     }
     if (content.includes("<Trans") || content.includes("</Trans>")) {
       accessPatterns.add("Trans");
+    }
+  }
+
+  // 11. Determine Structure Type: "namespaces" | "nested" | "flat"
+  let structureType: I18nStructureType;
+
+  if (userConfig?.structure) {
+    structureType = userConfig.structure;
+  } else if (hasArbFiles) {
+    structureType = "flat";
+  } else if (hasMultipleJsonPerSubdir) {
+    structureType = "namespaces";
+  } else if (hasSingleJsonFiles || hasSingleTranslationJson) {
+    if (accessPatterns.has("t:colon") || accessPatterns.has("useTranslation:ns")) {
+      structureType = "namespaces";
+    } else if (singleJsonHasNestedObjects || accessPatterns.has("t:dot")) {
+      structureType = "nested";
+    } else {
+      structureType = "flat";
+    }
+  } else if (hasSubdirs) {
+    if (codeConfig.namespaces && codeConfig.namespaces.length > 1) {
+      structureType = "namespaces";
+    } else if (accessPatterns.has("t:colon") || accessPatterns.has("useTranslation:ns")) {
+      structureType = "namespaces";
+    } else if (singleJsonHasNestedObjects) {
+      structureType = "nested";
+    } else {
+      structureType = "namespaces";
+    }
+  } else {
+    // Greenfield or no locale directory yet
+    if (accessPatterns.has("t:dot") && !accessPatterns.has("t:colon")) {
+      structureType = "nested";
+    } else {
+      structureType = "namespaces";
     }
   }
 
@@ -424,9 +510,11 @@ export async function detectI18n(
       targetLocales,
       ...(configFile ? { configFile } : {}),
       needsSetup,
+      structureType,
     },
     namespaces: Array.from(namespacesSet).sort(),
     accessPatterns: Array.from(accessPatterns).sort(),
     warnings,
+    structureType,
   };
 }

@@ -467,6 +467,50 @@ describe("AST Scanner", () => {
     expect(texts).not.toContain("md");
     expect(texts).not.toContain("top");
   });
+
+  it("ignores strings declared inside mock data variables", () => {
+    const code = `
+      import React from "react";
+      import { View, Text } from "react-native";
+
+      const MOCK_USERS = [
+        { id: "1", name: "John Doe", role: "Admin", bio: "Software engineer" },
+        { id: "2", name: "Jane Smith", role: "Editor", bio: "Writer" },
+      ];
+
+      const dummyFeed = [
+        { title: "Mock Post 1", description: "Lorem ipsum dolor sit amet" }
+      ];
+
+      export function Screen() {
+        return (
+          <View>
+            <Text>Real Screen Title</Text>
+          </View>
+        );
+      }
+    `;
+
+    const results = scanSourceFileAst({
+      filePath: "src/screens/Screen.tsx",
+      sourceCode: code,
+      onlyUserFacing: true,
+    });
+
+    // Only "Real Screen Title" should be detected!
+    expect(results).toHaveLength(1);
+    expect(results[0]?.text).toBe("Real Screen Title");
+
+    const texts = results.map((r) => r.text);
+    expect(texts).not.toContain("John Doe");
+    expect(texts).not.toContain("Admin");
+    expect(texts).not.toContain("Software engineer");
+    expect(texts).not.toContain("Jane Smith");
+    expect(texts).not.toContain("Editor");
+    expect(texts).not.toContain("Writer");
+    expect(texts).not.toContain("Mock Post 1");
+    expect(texts).not.toContain("Lorem ipsum dolor sit amet");
+  });
 });
 
 

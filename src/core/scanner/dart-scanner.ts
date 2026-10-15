@@ -310,6 +310,7 @@ export function scanDartSourceFile(options: DartScanOptions): DetectedString[] {
       propName,
       componentName,
       astType,
+      filePath,
     });
 
     if (onlyUserFacing && !classificationResult.isUserFacing) {

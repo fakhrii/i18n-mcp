@@ -38,14 +38,19 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
   // Priority: config namespaces, existing locale namespaces, feature names + 'common'
   const namespacesSet = new Set<string>(i18nResult.namespaces);
 
-  // If no namespaces were found in locale files, infer likely namespaces from detected features
-  if (namespacesSet.size === 0) {
+  if (i18nResult.structureType === "flat") {
+    namespacesSet.clear();
     namespacesSet.add("common");
-    for (const feature of structure.features) {
-      namespacesSet.add(feature);
+  } else {
+    // If no namespaces were found in locale files, infer likely namespaces from detected features
+    if (namespacesSet.size === 0) {
+      namespacesSet.add("common");
+      for (const feature of structure.features) {
+        namespacesSet.add(feature);
+      }
+    } else if (!namespacesSet.has("common")) {
+      namespacesSet.add("common");
     }
-  } else if (!namespacesSet.has("common")) {
-    namespacesSet.add("common");
   }
 
   // 6. Assemble complete analysis
@@ -69,6 +74,7 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
     projectStructure: structure,
     accessPatterns: i18nResult.accessPatterns,
     warnings,
+    structureType: i18nResult.structureType,
   };
 
   logger.info(

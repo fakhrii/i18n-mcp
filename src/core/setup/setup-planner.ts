@@ -107,6 +107,7 @@ i18n.use(initReactI18next).init({
   fallbackLng: "${sourceLocale}",
   supportedLngs: [${allLocales.map((l) => `"${l}"`).join(", ")}],
   defaultNS,
+  fallbackNS: defaultNS,
   resources,
   interpolation: {
     escapeValue: false,
@@ -128,6 +129,7 @@ i18n.use(initReactI18next).init({
   fallbackLng: "${sourceLocale}",
   supportedLngs: [${allLocales.map((l) => `"${l}"`).join(", ")}],
   defaultNS,
+  fallbackNS: defaultNS,
   resources,
   interpolation: {
     escapeValue: false,

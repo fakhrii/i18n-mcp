@@ -34,6 +34,7 @@ export function formatInternationalizeResult(result: InternationalizeResult): st
         `| **Scope** | \`${result.scope.length > 0 ? result.scope.join(", ") : "Entire Project"}\` |`
       );
       lines.push(`| **Library Detected** | \`${result.project.i18nLibrary || "react-i18next"}\` |`);
+      lines.push(`| **Structure Detected** | \`${result.project.structureType || "namespaces"}\` |`);
       lines.push(`| **Source Locale** | \`${result.project.sourceLocale || "en"}\` |`);
       lines.push(
         `| **Target Locales** | \`${(result.project.targetLocales || []).join(", ") || "none"}\` |`

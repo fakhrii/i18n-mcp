@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { FrameworkType, LanguageType, PackageManagerType } from "../../models/project.js";
-import { fileExists, readJsonFile, findFilesByGlob } from "../../utils/file-system.js";
+import { fileExists, readJsonFile, readTextFile, findFilesByGlob } from "../../utils/file-system.js";
 
 export interface ProjectMetadata {
   framework: FrameworkType;
@@ -26,15 +26,27 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
   const allDeps = { ...devDependencies, ...dependencies };
 
   // 0. Check for Flutter (pubspec.yaml)
-  const isFlutter = await fileExists(path.join(projectRoot, "pubspec.yaml"));
+  const pubspecPath = path.join(projectRoot, "pubspec.yaml");
+  const isFlutter = await fileExists(pubspecPath);
   if (isFlutter) {
+    const pubspecContent = (await readTextFile(pubspecPath)) || "";
+    const nameMatch = pubspecContent.match(/^name:\s*([a-zA-Z0-9_-]+)/m);
+    const versionMatch = pubspecContent.match(/^version:\s*([^\r\n#]+)/m);
+    const flutterDeps: Record<string, string> = { ...dependencies };
+    if (pubspecContent.includes("flutter_localizations:")) {
+      flutterDeps["flutter_localizations"] = "sdk: flutter";
+    }
+    if (pubspecContent.includes("intl:")) {
+      flutterDeps["intl"] = "any";
+    }
+
     return {
       framework: "flutter",
       language: "dart",
       packageManager: "pub",
-      packageName: packageJson?.name,
-      packageVersion: packageJson?.version,
-      dependencies,
+      packageName: nameMatch?.[1] || packageJson?.name,
+      packageVersion: versionMatch?.[1]?.trim() || packageJson?.version,
+      dependencies: flutterDeps,
       devDependencies,
     };
   }
