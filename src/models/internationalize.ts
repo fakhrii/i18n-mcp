@@ -1,4 +1,5 @@
 import type { I18nValidationResult } from "./validation.js";
+import type { I18nStructureType } from "./project.js";
 
 export type InternationalizeStatus =
   | "NO_CHANGES"
@@ -25,6 +26,7 @@ export interface InternationalizeInput {
   namespaces?: string[];
   candidateDecisions?: Record<string, boolean>;
   providedTranslations?: Record<string, any>;
+  structure?: I18nStructureType;
 }
 
 export interface InternationalizeResult {
@@ -36,6 +38,7 @@ export interface InternationalizeResult {
     sourceLocale?: string;
     targetLocales?: string[];
     localeDirectory?: string;
+    structureType?: I18nStructureType;
   };
   scope: string[];
   scan: {

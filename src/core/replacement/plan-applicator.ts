@@ -142,7 +142,11 @@ export async function applyI18nPlan(
   logger.info(`Applying i18n plan for project at ${projectRoot}`);
 
   // 3. Stage Locale Changes in memory
-  const localeResult = await prepareLocaleUpdates(projectRoot, plan.translations);
+  const localeResult = await prepareLocaleUpdates(
+    projectRoot,
+    plan.translations,
+    plan.project?.structureType
+  );
   warnings.push(...localeResult.warnings);
   errors.push(...localeResult.errors);
 

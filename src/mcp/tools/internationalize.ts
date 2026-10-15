@@ -64,6 +64,12 @@ export const internationalizeSchema = {
     .describe(
       "Optional map of candidate ID (or text) to boolean decision (true = include as user-facing, false = skip as technical) for resolving ambiguous strings."
     ),
+  structure: z
+    .enum(["namespaces", "nested", "flat"])
+    .optional()
+    .describe(
+      "Optional i18n structure type override ('namespaces', 'nested', or 'flat'). Auto-detected by default."
+    ),
 };
 
 export function registerInternationalizeTool(server: McpServer): void {
@@ -85,6 +91,7 @@ export function registerInternationalizeTool(server: McpServer): void {
       exclude,
       namespaces,
       candidateDecisions,
+      structure,
     }) => {
       logger.info(
         `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false})`
@@ -104,6 +111,7 @@ export function registerInternationalizeTool(server: McpServer): void {
           exclude,
           namespaces,
           candidateDecisions,
+          structure,
         });
 
         const summaryText = [

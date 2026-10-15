@@ -10,6 +10,8 @@ export type I18nLibraryType =
   | "custom"
   | "none";
 
+export type I18nStructureType = "namespaces" | "nested" | "flat";
+
 export interface I18nDetection {
   library: I18nLibraryType;
   detected: boolean;
@@ -18,6 +20,7 @@ export interface I18nDetection {
   targetLocales: string[];
   configFile?: string;
   needsSetup?: boolean;
+  structureType?: I18nStructureType;
 }
 
 export interface ProjectStructure {
@@ -43,4 +46,5 @@ export interface ProjectAnalysis {
   projectStructure: ProjectStructure;
   accessPatterns: string[];
   warnings: ConfigWarning[];
+  structureType: I18nStructureType;
 }

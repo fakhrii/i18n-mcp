@@ -32,6 +32,24 @@ export function injectRequiredImports(
 ): string {
   let result = sourceText;
 
+  const dartImportChange = codeChanges.find(
+    (c) =>
+      c.type === "ADD_IMPORT" &&
+      c.module?.includes("package:flutter_gen/gen_l10n/app_localizations.dart")
+  );
+  if (dartImportChange && !result.includes("app_localizations.dart")) {
+    const importStmt = "import 'package:flutter_gen/gen_l10n/app_localizations.dart';\n";
+    const firstImportMatch = result.match(/^import\s+['"][^'"]+['"];/m);
+    if (firstImportMatch && firstImportMatch.index !== undefined) {
+      result =
+        result.slice(0, firstImportMatch.index) +
+        importStmt +
+        result.slice(firstImportMatch.index);
+    } else {
+      result = `${importStmt}\n${result}`;
+    }
+  }
+
   const importChanges = codeChanges.filter(
     (c) => c.type === "ADD_IMPORT" && (c.module === "react-i18next" || c.module === "i18next")
   );
@@ -624,33 +642,35 @@ export function applySourceChangesToFile(
     applicableChanges.find((sc) => sc.namespace)?.namespace || "common";
   transformed = ensureI18nIntegrity(transformed, filePath, primaryNamespace);
 
-  // 7. Validate resulting syntax using TypeScript parser
-  try {
-    const checkFile = ts.createSourceFile(
-      filePath,
-      transformed,
-      ts.ScriptTarget.Latest,
-      /* setParentNodes */ false,
-      filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
-        ? ts.ScriptKind.TSX
-        : ts.ScriptKind.TS
-    );
-    // If parse diagnostics exist
-    const parseDiagnostics = (checkFile as unknown as { parseDiagnostics?: unknown[] })
-      .parseDiagnostics;
-    if (parseDiagnostics && parseDiagnostics.length > 0) {
-      warnings.push({
-        code: "SYNTAX_CHECK_WARNING",
-        message: `Transformed file ${toPosixPath(filePath)} generated syntax parser warnings.`,
+  // 7. Validate resulting syntax using TypeScript parser (for TS/JS files only)
+  if (/\.[jt]sx?$/i.test(filePath)) {
+    try {
+      const checkFile = ts.createSourceFile(
+        filePath,
+        transformed,
+        ts.ScriptTarget.Latest,
+        /* setParentNodes */ false,
+        filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
+          ? ts.ScriptKind.TSX
+          : ts.ScriptKind.TS
+      );
+      // If parse diagnostics exist
+      const parseDiagnostics = (checkFile as unknown as { parseDiagnostics?: unknown[] })
+        .parseDiagnostics;
+      if (parseDiagnostics && parseDiagnostics.length > 0) {
+        warnings.push({
+          code: "SYNTAX_CHECK_WARNING",
+          message: `Transformed file ${toPosixPath(filePath)} generated syntax parser warnings.`,
+          file: toPosixPath(filePath),
+        });
+      }
+    } catch (err: unknown) {
+      errors.push({
+        code: "SYNTAX_ERROR_IN_TRANSFORMED_CODE",
+        message: `Transformed code for ${toPosixPath(filePath)} failed syntax check: ${String(err)}`,
         file: toPosixPath(filePath),
       });
     }
-  } catch (err: unknown) {
-    errors.push({
-      code: "SYNTAX_ERROR_IN_TRANSFORMED_CODE",
-      message: `Transformed code for ${toPosixPath(filePath)} failed syntax check: ${String(err)}`,
-      file: toPosixPath(filePath),
-    });
   }
 
   return {

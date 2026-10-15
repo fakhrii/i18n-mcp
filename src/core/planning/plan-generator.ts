@@ -33,11 +33,13 @@ import {
 } from "./locale-change-planner.js";
 import {
   dirExists,
+  fileExists,
   listFiles,
   readJsonFile,
   readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
+import { parseArb } from "../locale/arb-handler.js";
 import { flattenNestedObject } from "../../utils/nested-json.js";
 import { planI18nSetup } from "../setup/setup-planner.js";
 import type { I18nSetupPlan } from "../../models/setup.js";
@@ -116,6 +118,28 @@ async function loadTargetLocaleTranslations(
           localeMap.set(ns, nsMap);
         }
       }
+
+      // Check for ARB files: e.g. app_es.arb, intl_es.arb, es.arb
+      const arbCandidates = [`app_${locale}.arb`, `intl_${locale}.arb`, `${locale}.arb`];
+      for (const cand of arbCandidates) {
+        const arbFile = path.join(fullLocaleDir, cand);
+        if (await fileExists(arbFile)) {
+          const arbText = await readTextFile(arbFile);
+          if (arbText) {
+            try {
+              const arb = parseArb(arbText);
+              const ns = path.basename(cand, ".arb");
+              const nsMap = localeMap.get(ns) || new Map<string, string>();
+              for (const [k, v] of arb.entries.entries()) {
+                nsMap.set(k, v);
+              }
+              localeMap.set(ns, nsMap);
+            } catch {
+              // ignore malformed arb
+            }
+          }
+        }
+      }
     }
   }
 
@@ -169,12 +193,22 @@ export async function generateI18nPlan(
     sourceLocale
   );
 
-  const { translations: targetLocaleTranslations, isSubdirStructure } =
+  const structureType = input?.structure || analysis.structureType || "namespaces";
+
+  const { translations: targetLocaleTranslations, isSubdirStructure: detectedSubdirStructure } =
     await loadTargetLocaleTranslations(
       projectRoot,
       effectiveLocaleDir,
       targetLocales
     );
+
+  const isSubdirStructure =
+    structureType === "namespaces" ? detectedSubdirStructure : false;
+
+  const isArb =
+    analysis.framework === "flutter" ||
+    analysis.i18n.library === "flutter_localizations" ||
+    Boolean(effectiveLocaleDir && (effectiveLocaleDir.includes("l10n") || effectiveLocaleDir.endsWith(".arb")));
 
   const localeContext: LocalePlanningContext = {
     projectRoot,
@@ -183,6 +217,7 @@ export async function generateI18nPlan(
     targetLocales,
     isSubdirStructure,
     existingTargetTranslations: targetLocaleTranslations,
+    isArb,
   };
 
   // 5. Track used keys and values per namespace to detect collisions
@@ -335,7 +370,10 @@ export async function generateI18nPlan(
     } else {
       // Step B: Generate new semantic key & resolve collision
       finalNamespace = preferredNs;
-      const candidateKey = generateSemanticKey(rawText);
+      const candidateKey =
+        analysis.framework === "flutter" && primaryItem.suggestedKey
+          ? primaryItem.suggestedKey
+          : generateSemanticKey(rawText);
 
       const nsKeys = namespaceUsedKeys.get(finalNamespace) || new Set<string>();
       namespaceUsedKeys.set(finalNamespace, nsKeys);
@@ -367,7 +405,8 @@ export async function generateI18nPlan(
         localeContext.localeDirectory,
         sourceLocale,
         finalNamespace,
-        isSubdirStructure
+        isSubdirStructure,
+        isArb
       );
 
       transPlan = {
@@ -418,6 +457,7 @@ export async function generateI18nPlan(
         confidenceThreshold,
         includeAmbiguous: input?.includeAmbiguous,
         candidateDecisions: input?.candidateDecisions,
+        structureType,
       });
 
       sourceChanges.push(sc);
@@ -450,6 +490,33 @@ export async function generateI18nPlan(
       (sc) => sc.file === relFile && sc.action !== "SKIP"
     );
     if (fileSCs.length === 0) continue;
+
+    if (structureType === "nested" || structureType === "flat") {
+      for (const sc of fileSCs) {
+        const locKey = `${sc.file}:${sc.location.line}:${sc.location.column}`;
+        const matchingItem = itemsByLocation.get(locKey);
+        if (matchingItem) {
+          sc.replacement = buildReplacementExpression(
+            matchingItem,
+            sc.namespace,
+            sc.key,
+            fileCtx,
+            structureType
+          );
+        }
+      }
+
+      const hasRichText = fileSCs.some((sc) => sc.replacement.includes("<Trans"));
+      const fileChanges = determineRequiredCodeChanges(
+        fileCtx,
+        [],
+        hasRichText,
+        structureType
+      );
+
+      fileCodeChangesMap.set(relFile, fileChanges);
+      continue;
+    }
 
     // Collect all namespaces used across source changes in this file
     const fileNamespaces = new Set<string>();
@@ -494,7 +561,8 @@ export async function generateI18nPlan(
           matchingItem,
           sc.namespace,
           sc.key,
-          fileCtx
+          fileCtx,
+          structureType
         );
       }
     }
@@ -507,7 +575,8 @@ export async function generateI18nPlan(
         boundNamespaces: existingBound,
       },
       mergedNamespaces,
-      hasRichText
+      hasRichText,
+      structureType
     );
 
     fileCodeChangesMap.set(relFile, fileChanges);
@@ -587,6 +656,7 @@ export async function generateI18nPlan(
       root: toPosixPath(projectRoot),
       framework: analysis.framework,
       library: setupPlan ? "react-i18next" : analysis.i18n.library,
+      structureType,
     },
     scope: {
       include: input?.include || [],

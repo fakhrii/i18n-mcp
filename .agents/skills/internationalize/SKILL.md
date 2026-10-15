@@ -37,6 +37,25 @@ This skill orchestrates the end-to-end internationalization pipeline across **Re
 - *"Internationalize this feature"* $\rightarrow$ Scopes to the feature directory containing the active file.
 - *"Find and replace all hardcoded user-facing strings in this folder"* $\rightarrow$ Scopes to the directory of the active file.
 - *"Internationalize checkout and translate to French and Arabic"* $\rightarrow$ `scope: ['src/features/checkout']`, `translate: true`, `targetLocales: ['fr', 'ar']`.
+- *"Internationalize using nested structure"* $\rightarrow$ `structure: 'nested'`.
+
+---
+
+## Automatic Structure Detection (`structureType`)
+
+The migration engine automatically detects your codebase's i18n architectural pattern:
+- **`"nested"` (Single-file hierarchical JSON)**: Single file per locale (e.g. `locales/en.json`) with nested objects (`{ "auth": { "login": "..." }, "common": { "save": "..." } }`).
+  - Components invoke: `const { t } = useTranslation();` (no namespace arguments).
+  - Keys referenced via dot notation: `t("auth.login")` and `t("common.save")` (never colons).
+  - All translations are placed hierarchically into `locales/en.json`.
+- **`"namespaces"` (Multi-file namespace bundles)**: Separate JSON files per namespace (e.g. `locales/en/common.json`, `locales/en/auth.json`).
+  - Components invoke: `const { t } = useTranslation(["auth", "common"]);`
+  - Primary namespace keys: `t("login")`; secondary namespace keys: `t("common:save")` (with colon).
+  - Translations are written to separate `locales/en/<namespace>.json` files.
+- **`"flat"` (Flat single-file JSON or Flutter ARB)**: Flat dictionary without nesting (e.g. `locales/en.json` or `lib/l10n/app_en.arb`).
+  - Keys referenced directly: `t("login")`.
+
+Can be explicitly overridden via `--structure=nested`, `--structure=namespaces`, or `--structure=flat`.
 
 ---
 

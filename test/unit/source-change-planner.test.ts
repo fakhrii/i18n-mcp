@@ -344,4 +344,118 @@ describe("Source Change Planner", () => {
       expect(plan.reason).toContain("Dynamic string construction");
     });
   });
+
+  describe("nested and flat structureType support", () => {
+    const item: DetectedString = {
+      file: "src/Screen.tsx",
+      line: 10,
+      column: 5,
+      text: "Login",
+      rawText: '"Login"',
+      type: "JSX_TEXT",
+      classification: "UI_TEXT",
+      confidence: 0.95,
+      confidenceLevel: "HIGH",
+      suggestedNamespace: "auth",
+      suggestedKey: "LOGIN",
+      reason: "JSX Text",
+    };
+
+    it("formats dot notation in nested structure", () => {
+      const expr = buildReplacementExpression(
+        item,
+        "auth",
+        "LOGIN",
+        {
+          filePath: "src/Screen.tsx",
+          hasUseTranslationImport: true,
+          hasI18nImport: false,
+          boundNamespaces: [],
+          accessPattern: "useTranslation",
+        },
+        "nested"
+      );
+      expect(expr).toBe('{t("auth.LOGIN")}');
+    });
+
+    it("does not duplicate prefix if key already contains namespace in nested mode", () => {
+      const expr = buildReplacementExpression(
+        item,
+        "auth",
+        "auth.LOGIN",
+        {
+          filePath: "src/Screen.tsx",
+          hasUseTranslationImport: true,
+          hasI18nImport: false,
+          boundNamespaces: [],
+          accessPattern: "useTranslation",
+        },
+        "nested"
+      );
+      expect(expr).toBe('{t("auth.LOGIN")}');
+    });
+
+    it("formats bare key in flat structure", () => {
+      const expr = buildReplacementExpression(
+        item,
+        "common",
+        "LOGIN",
+        {
+          filePath: "src/Screen.tsx",
+          hasUseTranslationImport: true,
+          hasI18nImport: false,
+          boundNamespaces: [],
+          accessPattern: "useTranslation",
+        },
+        "flat"
+      );
+      expect(expr).toBe('{t("LOGIN")}');
+    });
+
+    it("generates hook without namespace argument for nested structure", () => {
+      const changes = determineRequiredCodeChanges(
+        {
+          filePath: "src/Screen.tsx",
+          hasUseTranslationImport: false,
+          hasI18nImport: false,
+          hasUseTranslationCall: false,
+          boundNamespaces: [],
+          accessPattern: "useTranslation",
+        },
+        "auth",
+        false,
+        "nested"
+      );
+
+      expect(changes).toEqual([
+        {
+          type: "ADD_IMPORT",
+          value: "useTranslation",
+          module: "react-i18next",
+        },
+        {
+          type: "ADD_HOOK",
+          value: "const { t } = useTranslation()",
+        },
+      ]);
+    });
+
+    it("does not generate ADD_HOOK if useTranslation is already called in nested structure", () => {
+      const changes = determineRequiredCodeChanges(
+        {
+          filePath: "src/Screen.tsx",
+          hasUseTranslationImport: true,
+          hasI18nImport: false,
+          hasUseTranslationCall: true,
+          boundNamespaces: [],
+          accessPattern: "useTranslation",
+        },
+        "auth",
+        false,
+        "nested"
+      );
+
+      expect(changes.filter((c) => c.type === "ADD_HOOK")).toHaveLength(0);
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import type { TranslationPlan } from "../../models/plan.js";
+import type { I18nStructureType } from "../../models/project.js";
 import type { ApplyError, ApplyWarning } from "../../models/replacement.js";
 import { fileExists, readTextFile, toPosixPath } from "../../utils/file-system.js";
 import { getNestedValue, setNestedValue } from "../../utils/nested-json.js";
@@ -34,7 +35,8 @@ function resolveTargetKeyPath(
   parsed: Record<string, unknown>,
   namespace: string,
   key: string,
-  relPath?: string
+  relPath?: string,
+  structureType?: I18nStructureType
 ): string {
   // If the file itself is the namespace file (e.g. locales/en/common.json or locales/en/pispi.json)
   const isNamespaceFile =
@@ -46,6 +48,22 @@ function resolveTargetKeyPath(
     if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
       return key.slice(namespace.length + 1);
     }
+    return key;
+  }
+
+  // Explicit nested structure
+  if (structureType === "nested") {
+    if (namespace && namespace !== "translation" && namespace !== "default") {
+      if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
+        return key;
+      }
+      return `${namespace}.${key}`;
+    }
+    return key;
+  }
+
+  // Explicit flat structure
+  if (structureType === "flat") {
     return key;
   }
 
@@ -74,12 +92,12 @@ function resolveTargetKeyPath(
     return `${matchedNsKey}.${key}`;
   }
 
-  // 5. If parsed has top-level namespace objects and namespace is not "common", nest under namespace
+  // 5. If parsed has top-level namespace objects, nest under namespace
   const hasTopLevelNamespaces = Object.values(parsed).some(
     (v) => typeof v === "object" && v !== null && !Array.isArray(v)
   );
 
-  if (hasTopLevelNamespaces && namespace !== "common") {
+  if (hasTopLevelNamespaces) {
     return `${namespace}.${key}`;
   }
 
@@ -92,7 +110,8 @@ function resolveTargetKeyPath(
  */
 export async function prepareLocaleUpdates(
   projectRoot: string,
-  translations: TranslationPlan[]
+  translations: TranslationPlan[],
+  structureType?: I18nStructureType
 ): Promise<LocaleUpdateResult> {
   const stagedFiles = new Map<string, string>();
   const warnings: ApplyWarning[] = [];
@@ -179,8 +198,8 @@ export async function prepareLocaleUpdates(
     let entriesAdded = 0;
     for (const entry of newEntries) {
       if (entry.isPlural && entry.pluralForm) {
-        const pathOne = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_one`, relPath);
-        const pathOther = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_other`, relPath);
+        const pathOne = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_one`, relPath, structureType);
+        const pathOther = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_other`, relPath, structureType);
 
         setNestedValue(parsed, pathOne, entry.pluralForm.one);
         setNestedValue(parsed, pathOther, entry.pluralForm.other);
@@ -189,7 +208,7 @@ export async function prepareLocaleUpdates(
         continue;
       }
 
-      const targetPath = resolveTargetKeyPath(parsed, entry.namespace, entry.key, relPath);
+      const targetPath = resolveTargetKeyPath(parsed, entry.namespace, entry.key, relPath, structureType);
       const existingVal = getNestedValue(parsed, targetPath);
 
       if (existingVal !== undefined) {

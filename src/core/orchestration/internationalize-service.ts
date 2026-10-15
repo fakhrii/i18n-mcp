@@ -64,6 +64,7 @@ export async function internationalizeProject(
     sourceLocale,
     targetLocales,
     localeDirectory: analysis.i18n.localeDirectory || undefined,
+    structureType: input.structure || analysis.structureType,
   };
 
   for (const w of analysis.warnings) {
@@ -125,6 +126,7 @@ export async function internationalizeProject(
       sourceLocale,
       targetLocales,
       candidateDecisions: input.candidateDecisions,
+      structure: input.structure,
     });
   } catch (err: unknown) {
     return {

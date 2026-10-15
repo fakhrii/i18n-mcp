@@ -147,6 +147,15 @@ export function parseInternationalizeCommand(
     result.exclude = excludeMatch[1].split(",").map((s) => s.trim());
   }
 
+  // Structure: --structure=namespaces|nested|flat
+  const structureMatch = input.match(/--structure(?:=|\s+)([^\s]+)/i);
+  if (structureMatch && structureMatch[1]) {
+    const val = structureMatch[1].trim().toLowerCase();
+    if (val === "namespaces" || val === "nested" || val === "flat") {
+      result.structure = val;
+    }
+  }
+
   // 5. Extract Scopes
   const extractedScopes: string[] = [];
 
@@ -172,6 +181,7 @@ export function parseInternationalizeCommand(
             "--sourcelocale",
             "--namespaces",
             "--namespace",
+            "--structure",
             "--include",
             "--exclude",
           ].includes(token.toLowerCase())

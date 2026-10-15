@@ -1,4 +1,5 @@
 import type { I18nSetupPlan } from "./setup.js";
+import type { I18nStructureType } from "./project.js";
 
 export type PlanAction =
   | "CREATE"
@@ -102,6 +103,7 @@ export interface I18nPlan {
     root: string;
     framework: string;
     library?: string;
+    structureType?: I18nStructureType;
   };
   scope: {
     include: string[];
@@ -130,4 +132,5 @@ export interface GenerateI18nPlanInput {
   confidenceThreshold?: number;
   includeAmbiguous?: boolean;
   candidateDecisions?: Record<string, boolean>;
+  structure?: I18nStructureType;
 }
