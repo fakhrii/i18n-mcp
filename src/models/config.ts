@@ -7,6 +7,14 @@ export interface I18nConfigLocales {
   targets: string[];
 }
 
+export type TranslationProviderType = "auto" | "deepl" | "openai" | "gemini" | "dictionary";
+
+export interface I18nTranslationConfig {
+  provider?: TranslationProviderType;
+  apiKey?: string;
+  model?: string;
+}
+
 export interface I18nMcpConfig {
   framework?: FrameworkType;
   library?: I18nLibraryType;
@@ -18,4 +26,5 @@ export interface I18nMcpConfig {
   exclude?: string[];
   namespaces?: Record<string, string>;
   glossary?: Record<string, string>;
+  translation?: I18nTranslationConfig;
 }

@@ -59,6 +59,7 @@ export interface DetectedString {
   isPlural?: boolean;
   pluralVariable?: string;
   pluralForm?: {
+    zero?: string;
     one: string;
     other: string;
   };

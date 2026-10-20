@@ -76,8 +76,15 @@ Safely and atomically applies an approved i18n migration plan to the project (Re
 - **Returns**: Applied changes summary, modified files list, and diff preview.
 
 ### `translate_i18n`
-Translates missing keys across target locale files (JSON or Flutter ARB) using built-in dictionaries, custom glossaries, or AI agent translations without overwriting existing translations.
-- **Inputs**: `projectPath`, `sourceLocale`, `targetLocales`, `namespaces`, `dryRun`, `providedTranslations` (optional map of `{ [locale]: { [key]: translation } }`).
+Translates missing keys across target locale files (JSON or Flutter ARB) using pluggable cloud translation providers (`deepl`, `openai`, `gemini`), built-in dictionaries, custom glossaries, or AI agent translations without overwriting existing translations.
+- **Inputs**:
+  - `projectPath`: Project root directory.
+  - `sourceLocale`, `targetLocales`: Locales to translate.
+  - `namespaces`: Target namespaces to translate.
+  - `provider` (`"auto"` | `"deepl"` | `"openai"` | `"gemini"` | `"dictionary"`, optional, default `"auto"`): Cloud translation provider. **Completely optional and non-blocking**; seamlessly falls back to offline dictionaries if unconfigured, offline, or timed out.
+  - `apiKey` (string, optional): Cloud translation API key (or set `DEEPL_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in environment).
+  - `dryRun`: Preview translation changes without writing to disk.
+  - `providedTranslations` (optional map of `{ [locale]: { [key]: translation } }`).
 
 ### `validate_i18n`
 Validates i18n implementation for missing translations, interpolation variable mismatches, orphan keys, unused dead keys, and malformed files across JSON and ARB catalogs.
@@ -95,10 +102,20 @@ End-to-end orchestration tool combining analysis, scanning, candidate resolution
   - `dryRun` (boolean, optional, default `true`): Simulates execution and returns a unified diff.
   - `apply` (boolean, optional, default `false`): Applies code replacements and locale additions.
   - `translate` (boolean, optional, default `false`): Translates missing strings for target locales.
+  - `provider` (`"auto"` | `"deepl"` | `"openai"` | `"gemini"` | `"dictionary"`, optional): Pluggable cloud translation provider with non-blocking fallback.
+  - `apiKey` (string, optional): API key for cloud translation.
   - `providedTranslations` (record, optional): Agent-supplied translations for missing or ambiguous terms.
   - `candidateDecisions` (record, optional): Map of ambiguous candidate IDs to boolean approval.
   - `sourceLocale`, `targetLocales`, `namespaces`, `include`, `exclude`, `createBackup`.
 - **Returns**: Full lifecycle report with status (`NO_CHANGES`, `PLAN_READY`, `APPLIED`, `APPLIED_WITH_WARNINGS`, `REVIEW_REQUIRED`, `FAILED`).
+
+---
+
+## ICU MessageFormat & Plural Parity
+
+- **Flutter ARB**: Fully supports ICU plural syntax (`{count, plural, =0{no items} =1{1 item} other{{count} items}}`) with automated `@key.placeholders` metadata generation (`count: { type: "num", format: "compact" }`) required by `flutter gen-l10n`.
+- **Next.js (`next-intl`)**: Generates single-key ICU MessageFormat plural definitions in message catalogs (`messages/*.json`).
+- **React / React Native (`react-i18next`)**: Automatically produces `_one` and `_other` dual key entries for standard i18next runtime resolution.
 
 ---
 

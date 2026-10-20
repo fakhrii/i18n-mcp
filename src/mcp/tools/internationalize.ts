@@ -76,6 +76,16 @@ export const internationalizeSchema = {
     .describe(
       "Optional map of agent-provided translations for target locales (e.g. { fr: { common: { save: 'Enregistrer' } } })."
     ),
+  provider: z
+    .enum(["auto", "deepl", "openai", "gemini", "dictionary"])
+    .optional()
+    .describe(
+      "Optional translation provider ('auto', 'deepl', 'openai', 'gemini', or 'dictionary'). Defaults to 'auto'."
+    ),
+  apiKey: z
+    .string()
+    .optional()
+    .describe("Optional API key for cloud translation provider."),
 };
 
 export function registerInternationalizeTool(server: McpServer): void {
@@ -99,9 +109,11 @@ export function registerInternationalizeTool(server: McpServer): void {
       candidateDecisions,
       structure,
       providedTranslations,
+      provider,
+      apiKey,
     }) => {
       logger.info(
-        `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false})`
+        `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false}, provider=${provider || "auto"})`
       );
       try {
         const result = await internationalizeProject({
@@ -120,6 +132,8 @@ export function registerInternationalizeTool(server: McpServer): void {
           candidateDecisions,
           structure,
           providedTranslations,
+          provider,
+          apiKey,
         });
 
         const summaryText = [

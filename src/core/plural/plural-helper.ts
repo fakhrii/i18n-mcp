@@ -147,8 +147,14 @@ function matchCase(source: string, target: string): string {
   return target.toLowerCase();
 }
 
+export interface PluralForm {
+  one: string;
+  other: string;
+  zero?: string;
+}
+
 /**
- * Derives both `{ one, other }` plural forms from a text template.
+ * Derives `{ one, other, zero? }` plural forms from a text template.
  * E.g.:
  * - `derivePluralForms("{{count}} items", "count")` -> { one: "{{count}} item", other: "{{count}} items" }
  * - `derivePluralForms("{{count}} item", "count")` -> { one: "{{count}} item", other: "{{count}} items" }
@@ -156,7 +162,7 @@ function matchCase(source: string, target: string): string {
 export function derivePluralForms(
   text: string,
   countVarName = "count"
-): { one: string; other: string } {
+): PluralForm {
   const placeholderRegex = new RegExp(`\\{\\{${countVarName}\\}\\}|\\{\\{[^}]+\\}\\}`, "g");
   let match: RegExpExecArray | null;
 

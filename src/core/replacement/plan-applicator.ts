@@ -145,7 +145,8 @@ export async function applyI18nPlan(
   const localeResult = await prepareLocaleUpdates(
     projectRoot,
     plan.translations,
-    plan.project?.structureType
+    plan.project?.structureType,
+    plan.project?.framework
   );
   warnings.push(...localeResult.warnings);
   errors.push(...localeResult.errors);

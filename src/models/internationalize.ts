@@ -11,6 +11,8 @@ export type InternationalizeStatus =
   | "FAILED"
   | "FAILED_VALIDATION";
 
+import type { TranslationProviderType } from "./config.js";
+
 export interface InternationalizeInput {
   projectPath?: string;
   scope?: string[];
@@ -27,6 +29,8 @@ export interface InternationalizeInput {
   candidateDecisions?: Record<string, boolean>;
   providedTranslations?: Record<string, any>;
   structure?: I18nStructureType;
+  provider?: TranslationProviderType;
+  apiKey?: string;
 }
 
 export interface InternationalizeResult {

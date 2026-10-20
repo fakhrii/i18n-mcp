@@ -98,15 +98,26 @@ export function serializeArb(arb: ArbFile, indent = "  "): string {
 }
 
 /**
- * Converts a plural form dictionary { one, other } into an ICU MessageFormat plural string.
- * e.g. "{count, plural, =1{1 item} other{{count} items}}"
+ * Converts a plural form dictionary { one, other, zero? } into an ICU MessageFormat plural string.
+ * e.g. "{count, plural, =0{no items} =1{1 item} other{{count} items}}"
  */
 export function formatIcuPlural(
-  pluralForm: { one: string; other: string },
+  pluralForm: { one: string; other: string; zero?: string },
   countVar = "count"
 ): string {
-  const oneText = pluralForm.one.replace(/\{\{count\}\}/g, `{${countVar}}`);
-  const otherText = pluralForm.other.replace(/\{\{count\}\}/g, `{${countVar}}`);
+  const convertInterpolations = (str: string) => {
+    return str
+      .replace(new RegExp(`\\{\\{${countVar}\\}\\}`, "g"), `{${countVar}}`)
+      .replace(/\{\{count\}\}/g, `{${countVar}}`)
+      .replace(/\{\{([^}]+)\}\}/g, "{$1}");
+  };
+
+  const oneText = convertInterpolations(pluralForm.one);
+  const otherText = convertInterpolations(pluralForm.other);
+  if (pluralForm.zero) {
+    const zeroText = convertInterpolations(pluralForm.zero);
+    return `{${countVar}, plural, =0{${zeroText}} =1{${oneText}} other{${otherText}}}`;
+  }
   return `{${countVar}, plural, =1{${oneText}} other{${otherText}}}`;
 }
 
@@ -123,26 +134,50 @@ export function setArbEntry(
   const arbValue = value.replace(/\{\{([^}]+)\}\}/g, "{$1}");
   arb.entries.set(key, arbValue);
 
-  if (meta) {
-    arb.keyMetadata.set(key, meta);
-  } else if (!arb.keyMetadata.has(key)) {
-    // Extract placeholders if any
-    const placeholders: Record<string, { type: string }> = {};
-    const matches = arbValue.match(/\{([a-zA-Z0-9_]+)\}/g);
-    if (matches) {
-      for (const m of matches) {
-        const v = m.slice(1, -1);
-        if (v !== "count") {
-          placeholders[v] = { type: "String" };
-        } else {
-          placeholders[v] = { type: "num" };
-        }
-      }
-    }
+  // Extract placeholders automatically from arbValue
+  const extractedPlaceholders: Record<
+    string,
+    { type: string; example?: string; format?: string }
+  > = {};
 
-    arb.keyMetadata.set(key, {
-      description: `Translation for ${key}`,
-      ...(Object.keys(placeholders).length > 0 ? { placeholders } : {}),
-    });
+  // 1. Check for ICU plural / select: {varName, plural, ...} or {varName, select, ...}
+  const icuMatches = Array.from(
+    arbValue.matchAll(/\{([a-zA-Z0-9_]+)\s*,\s*(plural|select)\s*,/g)
+  );
+  for (const m of icuMatches) {
+    const varName = m[1]!;
+    const isPlural = m[2] === "plural";
+    extractedPlaceholders[varName] = {
+      type: isPlural ? "num" : "String",
+      ...(isPlural ? { format: "compact" } : {}),
+    };
   }
+
+  // 2. Extract simple placeholders {varName}
+  const simpleMatches = Array.from(arbValue.matchAll(/\{([a-zA-Z0-9_]+)\}/g));
+  for (const m of simpleMatches) {
+    const varName = m[1]!;
+    if (!extractedPlaceholders[varName]) {
+      extractedPlaceholders[varName] = {
+        type: varName === "count" ? "num" : "String",
+      };
+    }
+  }
+
+  const existingMeta = meta || arb.keyMetadata.get(key) || {
+    description: `Translation for ${key}`,
+  };
+
+  const mergedPlaceholders = {
+    ...extractedPlaceholders,
+    ...(existingMeta.placeholders || {}),
+  };
+
+  arb.keyMetadata.set(key, {
+    ...existingMeta,
+    description: existingMeta.description || `Translation for ${key}`,
+    ...(Object.keys(mergedPlaceholders).length > 0
+      ? { placeholders: mergedPlaceholders }
+      : {}),
+  });
 }

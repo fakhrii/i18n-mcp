@@ -1,3 +1,5 @@
+import type { TranslationProviderType } from "./config.js";
+
 export interface TranslateI18nInput {
   projectPath?: string;
   sourceLocale?: string;
@@ -5,6 +7,8 @@ export interface TranslateI18nInput {
   namespaces?: string[];
   dryRun?: boolean;
   providedTranslations?: Record<string, any>;
+  provider?: TranslationProviderType;
+  apiKey?: string;
 }
 
 export type TranslationItemStatus =
