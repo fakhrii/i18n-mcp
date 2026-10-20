@@ -6,6 +6,7 @@ import { registerApplyI18nPlanTool } from "./apply-i18n-plan.js";
 import { registerTranslateI18nTool } from "./translate-i18n.js";
 import { registerValidateI18nTool } from "./validate-i18n.js";
 import { registerInternationalizeTool } from "./internationalize.js";
+import { registerGenerateI18nTypesTool } from "./generate-i18n-types.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -15,6 +16,7 @@ export function registerAllTools(server: McpServer): void {
   registerTranslateI18nTool(server);
   registerValidateI18nTool(server);
   registerInternationalizeTool(server);
+  registerGenerateI18nTypesTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -24,3 +26,4 @@ export * from "./apply-i18n-plan.js";
 export * from "./translate-i18n.js";
 export * from "./validate-i18n.js";
 export * from "./internationalize.js";
+export * from "./generate-i18n-types.js";

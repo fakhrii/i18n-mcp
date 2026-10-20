@@ -256,11 +256,26 @@ export async function generateI18nPlan(
     primaryAccessPattern = analysis.accessPatterns[0]!;
   }
 
+  const targetLibrary =
+    analysis.i18n.library !== "none"
+      ? analysis.i18n.library
+      : setupPlan?.library ||
+        (analysis.framework === "nextjs"
+          ? "next-intl"
+          : analysis.framework === "flutter"
+          ? "flutter_localizations"
+          : "react-i18next");
+
   for (const relFile of uniqueFiles) {
     const absFile = path.join(projectRoot, relFile);
     const content = (await readTextFile(absFile)) || "";
-    const ctx = analyzeFileTranslationContext(content, primaryAccessPattern);
+    const ctx = analyzeFileTranslationContext(
+      content,
+      primaryAccessPattern,
+      targetLibrary
+    );
     ctx.filePath = toPosixPath(relFile);
+    ctx.i18nLibrary = targetLibrary;
     fileContexts.set(relFile, ctx);
   }
 
@@ -371,9 +386,8 @@ export async function generateI18nPlan(
       // Step B: Generate new semantic key & resolve collision
       finalNamespace = preferredNs;
       const candidateKey =
-        analysis.framework === "flutter" && primaryItem.suggestedKey
-          ? primaryItem.suggestedKey
-          : generateSemanticKey(rawText);
+        primaryItem.suggestedKey ||
+        generateSemanticKey(rawText, primaryItem.propName || primaryItem.componentName);
 
       const nsKeys = namespaceUsedKeys.get(finalNamespace) || new Set<string>();
       namespaceUsedKeys.set(finalNamespace, nsKeys);
@@ -655,7 +669,7 @@ export async function generateI18nPlan(
     project: {
       root: toPosixPath(projectRoot),
       framework: analysis.framework,
-      library: setupPlan ? "react-i18next" : analysis.i18n.library,
+      library: setupPlan ? setupPlan.library : analysis.i18n.library,
       structureType,
     },
     scope: {

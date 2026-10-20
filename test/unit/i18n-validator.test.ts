@@ -167,4 +167,44 @@ describe("i18n Validator Unit Tests", () => {
     const updatedEnAuth = JSON.parse(await fs.readFile(enAuthPath, "utf8"));
     expect(updatedEnAuth.UNUSED_SIGNIN_PROMPT).toBeUndefined();
   });
+
+  it("validates Flutter ARB catalogs and detects missing keys across locales", async () => {
+    const flutterDir = await fs.mkdtemp(path.join(os.tmpdir(), "flutter-arb-val-"));
+    try {
+      await fs.writeFile(
+        path.join(flutterDir, "pubspec.yaml"),
+        "name: flutter_app\ndependencies:\n  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n"
+      );
+      const l10nDir = path.join(flutterDir, "lib/l10n");
+      await fs.mkdir(l10nDir, { recursive: true });
+
+      await fs.writeFile(
+        path.join(l10nDir, "app_en.arb"),
+        JSON.stringify({
+          "@@locale": "en",
+          appTitle: "My App",
+          welcomeMessage: "Welcome {user}",
+        })
+      );
+
+      await fs.writeFile(
+        path.join(l10nDir, "app_es.arb"),
+        JSON.stringify({
+          "@@locale": "es",
+          appTitle: "Mi Aplicación",
+          // missing welcomeMessage
+        })
+      );
+
+      const res = await validateI18n({
+        projectPath: flutterDir,
+        locales: ["es"],
+      });
+
+      expect(res.valid).toBe(false);
+      expect(res.issues.some((i) => i.type === "MISSING_TRANSLATION" && i.key === "welcomeMessage")).toBe(true);
+    } finally {
+      await fs.rm(flutterDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -70,6 +70,12 @@ export const internationalizeSchema = {
     .describe(
       "Optional i18n structure type override ('namespaces', 'nested', or 'flat'). Auto-detected by default."
     ),
+  providedTranslations: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Optional map of agent-provided translations for target locales (e.g. { fr: { common: { save: 'Enregistrer' } } })."
+    ),
 };
 
 export function registerInternationalizeTool(server: McpServer): void {
@@ -92,6 +98,7 @@ export function registerInternationalizeTool(server: McpServer): void {
       namespaces,
       candidateDecisions,
       structure,
+      providedTranslations,
     }) => {
       logger.info(
         `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false})`
@@ -112,6 +119,7 @@ export function registerInternationalizeTool(server: McpServer): void {
           namespaces,
           candidateDecisions,
           structure,
+          providedTranslations,
         });
 
         const summaryText = [

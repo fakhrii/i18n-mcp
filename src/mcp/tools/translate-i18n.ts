@@ -26,6 +26,12 @@ export const translateI18nSchema = {
     .optional()
     .default(false)
     .describe("If true, calculates translations and reports results without writing files to disk."),
+  providedTranslations: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Map of target locale to translations provided by the agent (e.g. { fr: { common: { save: 'Enregistrer' } } } or { fr: { 'common:save': 'Enregistrer' } } or { fr: { save: 'Enregistrer' } })."
+    ),
 };
 
 export function registerTranslateI18nTool(server: McpServer): void {
@@ -39,6 +45,7 @@ export function registerTranslateI18nTool(server: McpServer): void {
       targetLocales,
       namespaces,
       dryRun,
+      providedTranslations,
     }) => {
       logger.info(
         `Invoking translate_i18n (dryRun=${dryRun ?? false}, projectPath=${projectPath})`
@@ -50,6 +57,7 @@ export function registerTranslateI18nTool(server: McpServer): void {
           targetLocales,
           namespaces,
           dryRun: dryRun ?? false,
+          providedTranslations,
         });
 
         const summaryText = [

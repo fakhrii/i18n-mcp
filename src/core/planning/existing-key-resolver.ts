@@ -199,7 +199,7 @@ export async function loadExistingTranslations(
       if (arbContent) {
         try {
           const arb = parseArb(arbContent);
-          const ns = rawName;
+          const ns = "common";
           const nsMap = byNamespace.get(ns) || new Map<string, string>();
           byNamespace.set(ns, nsMap);
           for (const [k, v] of arb.entries.entries()) {

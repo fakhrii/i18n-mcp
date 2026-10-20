@@ -29,8 +29,43 @@ describe("Key Generator", () => {
     expect(key).toBe("THIS_IS_AN_EXTREMELY_LONG");
   });
 
-  it("falls back gracefully when text contains only punctuation", () => {
-    expect(generateSemanticKey("---")).toBe("TEXT");
-    expect(generateSemanticKey("...", "BTN")).toBe("BTN_TEXT");
+  it("guarantees English keys for Latin non-English text", () => {
+    // French, German, Spanish common actions and phrases
+    expect(generateSemanticKey("Créer un compte")).toBe("CREATE_ACCOUNT");
+    expect(generateSemanticKey("Über uns")).toBe("ABOUT_US");
+    expect(generateSemanticKey("Año nuevo")).toBe("NEW_YEAR");
+    expect(generateSemanticKey("Mot de passe oublié ?")).toBe("FORGOT_PASSWORD");
+    expect(generateSemanticKey("Enregistrer les modifications")).toBe("SAVE_CHANGES");
+    expect(generateSemanticKey("Passwort vergessen")).toBe("FORGOT_PASSWORD");
+    expect(generateSemanticKey("Benutzerkonto erstellen")).toBe("CREATE_ACCOUNT");
+    expect(generateSemanticKey("Iniciar sesión")).toBe("LOGIN");
+    expect(generateSemanticKey("Cerrar sesión")).toBe("LOGOUT");
+    expect(generateSemanticKey("Bienvenue de nouveau")).toBe("WELCOME_BACK");
+    expect(generateSemanticKey("Se déconnecter")).toBe("LOGOUT");
+  });
+
+  it("translates word-level Latin UI phrases to English keys", () => {
+    expect(generateSemanticKey("Créer un nouveau profil")).toBe("CREATE_NEW_PROFILE");
+    expect(generateSemanticKey("Modifier les détails")).toBe("EDIT_DETAILS");
+    expect(generateSemanticKey("Ajouter un produit")).toBe("ADD_PRODUCT");
+  });
+
+  it("uses context-first naming for Latin non-English text when informative context is provided", () => {
+    expect(generateSemanticKey("Commander vos articles", "submitOrderButton")).toBe("SUBMIT_ORDER_BUTTON");
+    expect(generateSemanticKey("Modifier vos paramètres", "editSettings")).toBe("EDIT_SETTINGS");
+  });
+
+  it("supports lowerCamelCase keyStyle for Flutter ARB keys", () => {
+    expect(generateSemanticKey("Créer un compte", undefined, "lowerCamelCase")).toBe("createAccount");
+    expect(generateSemanticKey("Über uns", undefined, "lowerCamelCase")).toBe("aboutUs");
+    expect(generateSemanticKey("Año nuevo", undefined, "lowerCamelCase")).toBe("newYear");
+    expect(generateSemanticKey("Mot de passe oublié ?", undefined, "lowerCamelCase")).toBe("forgotPassword");
+  });
+
+  it("uses context-first naming for non-Latin strings", () => {
+    expect(generateSemanticKey("登录", "loginButton")).toBe("LOGIN_BUTTON");
+    expect(generateSemanticKey("تسجيل الدخول", "signInButton")).toBe("SIGN_IN_BUTTON");
+    expect(generateSemanticKey("Войти", "loginTitle")).toBe("LOGIN_TITLE");
+    expect(generateSemanticKey("こんにちは", "headerTitle")).toBe("HEADER_TITLE");
   });
 });

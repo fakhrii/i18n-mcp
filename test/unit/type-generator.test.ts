@@ -60,4 +60,45 @@ describe("Phase P3: TypeScript Typings Generation (resources.d.ts)", () => {
 
     await fs.rm(tempDir, { recursive: true, force: true });
   });
+
+  it("exposes generate_i18n_types via MCP server and executes correctly", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { createI18nMcpServer } = await import("../../src/mcp/server.js");
+
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "type-gen-mcp-"));
+    const srcDir = path.join(tempDir, "src");
+    const localesDir = path.join(srcDir, "locales", "en");
+    await fs.mkdir(localesDir, { recursive: true });
+    await fs.writeFile(path.join(localesDir, "common.json"), JSON.stringify({ HELLO: "Hello" }));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "test-mcp-app", dependencies: { "react-i18next": "^13.0.0" } })
+    );
+
+    const server = createI18nMcpServer();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
+
+    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+
+    const toolsResult = await client.listTools();
+    const tool = toolsResult.tools.find((t) => t.name === "generate_i18n_types");
+    expect(tool).toBeDefined();
+
+    const callResult = await client.callTool({
+      name: "generate_i18n_types",
+      arguments: {
+        projectPath: tempDir,
+        writeToDisk: true,
+      },
+    });
+
+    expect(callResult.isError).toBeFalsy();
+    const text = (callResult.content[0] as { type: string; text: string }).text;
+    expect(text).toContain("Status: SUCCESS");
+    expect(text).toContain("src/@types/resources.d.ts");
+
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
 });

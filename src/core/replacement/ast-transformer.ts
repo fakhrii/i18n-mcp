@@ -51,7 +51,10 @@ export function injectRequiredImports(
   }
 
   const importChanges = codeChanges.filter(
-    (c) => c.type === "ADD_IMPORT" && (c.module === "react-i18next" || c.module === "i18next")
+    (c) =>
+      c.type === "ADD_IMPORT" &&
+      c.module &&
+      !c.module.startsWith("package:")
   );
   if (importChanges.length === 0) {
     return result;
@@ -232,7 +235,12 @@ function findUseTranslationCall(node: ts.Node): ts.CallExpression | undefined {
     if (found) return;
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText();
-      if (callee === "useTranslation" || callee.endsWith(".useTranslation")) {
+      if (
+        callee === "useTranslation" ||
+        callee.endsWith(".useTranslation") ||
+        callee === "useTranslations" ||
+        callee.endsWith(".useTranslations")
+      ) {
         found = n;
         return;
       }
@@ -445,7 +453,9 @@ export function injectRequiredHooks(
     // If target already has useTranslation
     if (target.hasHookCall && target.hookCallNode) {
       if (updateHookChange) {
-        const newCallMatch = updateHookChange.value.match(/useTranslation\s*\([^)]*\)/);
+        const newCallMatch = updateHookChange.value.match(
+          /(?:useTranslation|useTranslations)\s*\([^)]*\)/
+        );
         if (newCallMatch) {
           const start = target.hookCallNode.getStart(sourceFile);
           const end = target.hookCallNode.getEnd();
@@ -614,6 +624,14 @@ export function applySourceChangesToFile(
       rep.replacement +
       transformed.slice(rep.endOffset);
     changesApplied++;
+  }
+
+  if (filePath.endsWith(".dart")) {
+    // Strip invalid const constructors where child expression now uses runtime AppLocalizations.of(context)
+    transformed = transformed.replace(
+      /\bconst\s+([A-Z][a-zA-Z0-9_]*\s*\([^;)]*AppLocalizations\.of\(context\)[^;)]*\))/g,
+      "$1"
+    );
   }
 
   // 3. Collect required code changes (imports and hooks)

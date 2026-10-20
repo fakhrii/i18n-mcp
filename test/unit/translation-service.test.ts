@@ -162,5 +162,50 @@ describe("Translation Service & Provider Unit Tests", () => {
       expect(res.filesModified).toContain("src/locales/fr/auth.json");
       expect(res.filesModified).not.toContain("src/locales/fr/common.json");
     });
+
+    it("translates Flutter ARB catalogs and respects providedTranslations", async () => {
+      const flutterDir = await fs.mkdtemp(path.join(os.tmpdir(), "flutter-arb-trans-"));
+      try {
+        await fs.writeFile(
+          path.join(flutterDir, "pubspec.yaml"),
+          "name: flutter_app\ndependencies:\n  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n"
+        );
+        const l10nDir = path.join(flutterDir, "lib/l10n");
+        await fs.mkdir(l10nDir, { recursive: true });
+
+        await fs.writeFile(
+          path.join(l10nDir, "app_en.arb"),
+          JSON.stringify({
+            "@@locale": "en",
+            saveButton: "Save",
+            cancelButton: "Cancel",
+            customText: "Custom original phrase",
+          })
+        );
+
+        const res = await translateI18n({
+          projectPath: flutterDir,
+          targetLocales: ["es"],
+          dryRun: false,
+          providedTranslations: {
+            es: {
+              customText: "Frase original personalizada",
+            },
+          },
+        });
+
+        expect(res.errors).toHaveLength(0);
+        expect(res.filesModified).toContain("lib/l10n/app_es.arb");
+
+        const esContent = await fs.readFile(path.join(l10nDir, "app_es.arb"), "utf8");
+        const parsedEs = JSON.parse(esContent);
+        expect(parsedEs["@@locale"]).toBe("es");
+        expect(parsedEs["saveButton"]).toBe("Guardar");
+        expect(parsedEs["cancelButton"]).toBe("Cancelar");
+        expect(parsedEs["customText"]).toBe("Frase original personalizada");
+      } finally {
+        await fs.rm(flutterDir, { recursive: true, force: true });
+      }
+    });
   });
 });

@@ -657,4 +657,56 @@ program
     }
   );
 
+program
+  .command("types")
+  .description("Generate TypeScript definition file (resources.d.ts) from source locale catalogs")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("-o, --output <path>", "Output file path (e.g. src/@types/resources.d.ts)")
+  .option("--dry-run", "Preview generated TypeScript definitions without writing to disk", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        output?: string;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { generateI18nTypes } = await import(
+          "../core/typings/type-generator.js"
+        );
+        const result = await generateI18nTypes(projectPath, {
+          outputPath: options.output,
+          writeToDisk: !options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- i18n TypeScript Type Generation ---\n");
+        console.log(`Output:      ${result.outputPath}`);
+        console.log(`Written:     ${!options.dryRun}`);
+        console.log(`Namespaces:  [${result.namespaces.join(", ")}]`);
+
+        if (options.dryRun) {
+          console.log("\n--- Preview ---\n");
+          console.log(result.content);
+        }
+
+        console.log("\n----------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Type generation failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);

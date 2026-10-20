@@ -272,8 +272,10 @@ export function scanDartSourceFile(options: DartScanOptions): DetectedString[] {
     let propName: string | undefined;
     let astType: AstContextType = "STRING_LITERAL";
 
-    // Check for Text('...') or TextSpan(text: '...')
-    const textWidgetMatch = linePrefix.match(/\b([A-Z][a-zA-Z0-9_]*)\s*\(\s*$/);
+    // Check for Text('...') or TextSpan(text: '...') - supports single and multiline
+    const textWidgetMatch =
+      linePrefix.match(/\b([A-Z][a-zA-Z0-9_]*)\s*\(\s*$/) ||
+      prefixContext.match(/\b([A-Z][a-zA-Z0-9_]*)\s*\(\s*$/);
     if (textWidgetMatch && textWidgetMatch[1]) {
       const widget = textWidgetMatch[1];
       if (FLUTTER_WIDGET_NAMES.has(widget.toLowerCase()) || widget.endsWith("Text") || widget.endsWith("Button")) {
@@ -282,8 +284,10 @@ export function scanDartSourceFile(options: DartScanOptions): DetectedString[] {
       }
     }
 
-    // Check for prop: '...' (e.g. title: '...', hintText: '...')
-    const propMatch = linePrefix.match(/\b([a-zA-Z0-9_]+)\s*:\s*$/);
+    // Check for prop: '...' (e.g. title: '...', hintText: '...') - supports single and multiline
+    const propMatch =
+      linePrefix.match(/\b([a-zA-Z0-9_]+)\s*:\s*$/) ||
+      prefixContext.match(/\b([a-zA-Z0-9_]+)\s*:\s*$/);
     if (propMatch && propMatch[1]) {
       const prop = propMatch[1];
       propName = prop;

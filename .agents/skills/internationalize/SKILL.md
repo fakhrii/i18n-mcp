@@ -110,9 +110,9 @@ Format the MCP response into clean Markdown:
 - **If `status: "REVIEW_REQUIRED"`**:
   Highlight specific strings requiring human judgment before automated migration.
 
-### Step 5: Apply on User Confirmation
+### Step 5: Apply on User Confirmation & Agent Translation Bridge
 If the developer replies with confirmation (e.g. "apply", "proceed", "yes, apply"):
-Re-invoke the MCP tool with:
+If the project needs translations for custom or domain-specific terms not found in built-in dictionaries, the agent can resolve them directly and provide them via `providedTranslations`:
 ```json
 {
   "ServerName": "react-native-i18n",
@@ -122,11 +122,18 @@ Re-invoke the MCP tool with:
     "dryRun": false,
     "apply": true,
     "translate": <translateRequested>,
-    "candidateDecisions": <resolvedDecisionsIfAny>
+    "candidateDecisions": <resolvedDecisionsIfAny>,
+    "providedTranslations": {
+      "es": { "customTerm": "Término personalizado" },
+      "fr": { "customTerm": "Terme personnalisé" }
+    }
   }
 }
 ```
 Present the final applied report and validation results.
+
+### Step 6: Generate TypeScript Typings (TypeScript Projects)
+If the project is a TypeScript project with `i18next` / `react-i18next` / `next-intl`, invoke `generate_i18n_types` (or recommend `npx i18n-mcp types`) to create or update `src/@types/resources.d.ts` for full compile-time key validation.
 
 ---
 

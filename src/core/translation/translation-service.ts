@@ -16,9 +16,17 @@ import { loadExistingTranslations } from "../planning/existing-key-resolver.js";
 import {
   dirExists,
   fileExists,
+  listFiles,
   readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
+import {
+  isArbFile,
+  parseArb,
+  serializeArb,
+  setArbEntry,
+  type ArbFile,
+} from "../locale/arb-handler.js";
 import { getNestedValue, setNestedValue } from "../../utils/nested-json.js";
 import { logger } from "../../utils/logger.js";
 
@@ -201,8 +209,155 @@ export async function translateI18n(
   let pendingCount = 0;
   let reviewCount = 0;
 
+  const dirFiles = await listFiles(fullLocaleDir);
+  const isArb = dirFiles.some((f) => isArbFile(f)) || analysis.framework === "flutter";
+
   // 7. Process each target locale
   for (const targetLocale of targetLocales) {
+    if (isArb) {
+      let targetArbName = `app_${targetLocale}.arb`;
+      const cand = dirFiles.find(
+        (f) =>
+          isArbFile(f) &&
+          (f.includes(`_${targetLocale}.arb`) || f === `${targetLocale}.arb`)
+      );
+      if (cand) {
+        targetArbName = cand;
+      } else {
+        const sourceArb = dirFiles.find(
+          (f) =>
+            isArbFile(f) &&
+            (f.includes(`_${sourceLocale}.arb`) || f === `${sourceLocale}.arb`)
+        );
+        if (sourceArb) {
+          if (sourceArb.startsWith("intl_")) {
+            targetArbName = `intl_${targetLocale}.arb`;
+          } else if (!sourceArb.includes("_")) {
+            targetArbName = `${targetLocale}.arb`;
+          }
+        }
+      }
+
+      const relPath = toPosixPath(path.join(localeDir, targetArbName));
+      const absPath = path.join(projectRoot, relPath);
+
+      let currentContent = JSON.stringify({ "@@locale": targetLocale }, null, 2);
+      let indent = "  ";
+      if (await fileExists(absPath)) {
+        currentContent = (await readTextFile(absPath)) || currentContent;
+        indent = detectIndentation(currentContent);
+      }
+
+      let arb: ArbFile;
+      try {
+        arb = parseArb(currentContent);
+        if (!arb.locale) arb.locale = targetLocale;
+      } catch (err: unknown) {
+        errors.push(`Failed to parse ARB for ${relPath}: ${String(err)}`);
+        continue;
+      }
+
+      let fileModified = false;
+
+      for (const [namespace, keysMap] of existingSource.byNamespace.entries()) {
+        if (filterNamespaces && !filterNamespaces.has(namespace)) continue;
+
+        for (const [key, sourceText] of keysMap.entries()) {
+          const existingVal = arb.entries.get(key);
+          if (typeof existingVal === "string" && existingVal.trim().length > 0) {
+            unchangedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: existingVal,
+              locale: targetLocale,
+              status: "UNCHANGED",
+            });
+            continue;
+          }
+
+          // Check providedTranslations first
+          const providedText = lookupProvidedTranslation(
+            input.providedTranslations,
+            targetLocale,
+            namespace,
+            key
+          );
+
+          if (providedText !== undefined) {
+            translatedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: providedText,
+              locale: targetLocale,
+              status: "TRANSLATED",
+            });
+            setArbEntry(arb, key, providedText);
+            fileModified = true;
+            continue;
+          }
+
+          // Translate missing key
+          const transResp = await provider.translate({
+            text: sourceText,
+            sourceLocale,
+            targetLocale,
+            namespace,
+            key,
+            glossary,
+          });
+
+          let status: TranslationItemStatus = "TRANSLATED";
+          if (!transResp.translated) {
+            status = "PENDING";
+            pendingCount++;
+            pendingItems.push({
+              key,
+              sourceText,
+              locale: targetLocale,
+              namespace,
+            });
+          } else if (transResp.confidence < 0.85) {
+            status = "REVIEW";
+            reviewCount++;
+          } else {
+            status = "TRANSLATED";
+            translatedCount++;
+          }
+
+          items.push({
+            namespace,
+            key,
+            sourceText,
+            translatedText: transResp.translatedText,
+            locale: targetLocale,
+            status,
+          });
+
+          setArbEntry(arb, key, transResp.translatedText);
+          fileModified = true;
+        }
+      }
+
+      if (fileModified) {
+        filesModifiedSet.add(relPath);
+        if (!dryRun) {
+          try {
+            await fs.mkdir(path.dirname(absPath), { recursive: true });
+            const serialized = serializeArb(arb, indent);
+            await fs.writeFile(absPath, serialized, "utf8");
+          } catch (err: unknown) {
+            errors.push(`Failed to write ARB file ${relPath}: ${String(err)}`);
+          }
+        }
+      }
+
+      continue;
+    }
+
     // For single-file structure: locales/<targetLocale>.json
     if (!isSubdirStructure) {
       const relPath = toPosixPath(path.join(localeDir, `${targetLocale}.json`));

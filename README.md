@@ -76,12 +76,16 @@ Safely and atomically applies an approved i18n migration plan to the project (Re
 - **Returns**: Applied changes summary, modified files list, and diff preview.
 
 ### `translate_i18n`
-Translates missing keys across target locale files using built-in dictionaries and glossaries without overwriting existing translations.
-- **Inputs**: `projectPath`, `sourceLocale`, `targetLocales`, `namespaces`, `dryRun`.
+Translates missing keys across target locale files (JSON or Flutter ARB) using built-in dictionaries, custom glossaries, or AI agent translations without overwriting existing translations.
+- **Inputs**: `projectPath`, `sourceLocale`, `targetLocales`, `namespaces`, `dryRun`, `providedTranslations` (optional map of `{ [locale]: { [key]: translation } }`).
 
 ### `validate_i18n`
-Validates i18n implementation for missing translations, interpolation variable mismatches, orphan keys, and malformed files.
-- **Inputs**: `projectPath`, `locales`, `namespaces`, `checkSourceCode`, `scope`.
+Validates i18n implementation for missing translations, interpolation variable mismatches, orphan keys, unused dead keys, and malformed files across JSON and ARB catalogs.
+- **Inputs**: `projectPath`, `locales`, `namespaces`, `checkSourceCode`, `checkUnusedKeys`, `pruneUnusedKeys`, `scope`.
+
+### `generate_i18n_types`
+Generates compile-time TypeScript definitions (`resources.d.ts`) with module augmentation for i18next / react-i18next / next-intl from source locale catalogs, ensuring strict autocomplete and compile-time key safety.
+- **Inputs**: `projectPath`, `outputPath` (default: `src/@types/resources.d.ts`), `writeToDisk` (boolean, default: `true`).
 
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
@@ -91,6 +95,7 @@ End-to-end orchestration tool combining analysis, scanning, candidate resolution
   - `dryRun` (boolean, optional, default `true`): Simulates execution and returns a unified diff.
   - `apply` (boolean, optional, default `false`): Applies code replacements and locale additions.
   - `translate` (boolean, optional, default `false`): Translates missing strings for target locales.
+  - `providedTranslations` (record, optional): Agent-supplied translations for missing or ambiguous terms.
   - `candidateDecisions` (record, optional): Map of ambiguous candidate IDs to boolean approval.
   - `sourceLocale`, `targetLocales`, `namespaces`, `include`, `exclude`, `createBackup`.
 - **Returns**: Full lifecycle report with status (`NO_CHANGES`, `PLAN_READY`, `APPLIED`, `APPLIED_WITH_WARNINGS`, `REVIEW_REQUIRED`, `FAILED`).
@@ -103,14 +108,15 @@ End-to-end orchestration tool combining analysis, scanning, candidate resolution
 src/
 ├── mcp/                      # Model Context Protocol layer
 │   ├── server.ts             # McpServer instance & stdio lifecycle
-│   └── tools/                # 7 registered MCP tools
+│   └── tools/                # 8 registered MCP tools
 │       ├── analyze-project.ts
 │       ├── scan-hardcoded-texts.ts
 │       ├── generate-i18n-plan.ts
 │       ├── apply-i18n-plan.ts
 │       ├── translate-i18n.ts
 │       ├── validate-i18n.ts
-│       └── internationalize.ts
+│       ├── internationalize.ts
+│       └── generate-i18n-types.ts
 │
 ├── core/                     # Framework-independent i18n engine
 │   ├── discovery/            # Project & framework detection
@@ -196,7 +202,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (34 test files, 202 tests)
+# Run unit and integration tests (44 test files, 295 tests)
 npm test
 
 # Typecheck
@@ -218,6 +224,12 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Generate TypeScript type definitions (resources.d.ts)
+npx i18n-mcp types ./my-project
+
+# Preview generated types without writing
+npx i18n-mcp types ./my-project --dry-run
 
 # Output raw JSON
 npx i18n-mcp scan ./my-project --json
