@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import ts from "typescript";
 import type { I18nPlan, SourceChangePlan } from "../../models/plan.js";
 import type {
   ApplyError,
@@ -17,6 +18,87 @@ import {
   toPosixPath,
 } from "../../utils/file-system.js";
 import { logger } from "../../utils/logger.js";
+
+/**
+ * Injects setup import statement into an entry file (e.g. index.js, App.tsx, app/layout.tsx),
+ * respecting TypeScript/JavaScript AST, multiline imports, and directives ('use client', 'use strict').
+ */
+export function injectEntryImport(
+  source: string,
+  importStatement: string,
+  filename = "index.ts"
+): string {
+  if (source.includes(importStatement)) {
+    return source;
+  }
+
+  const isJsTs = /\.[j|t]sx?$/i.test(filename);
+  if (isJsTs) {
+    try {
+      const sourceFile = ts.createSourceFile(
+        filename,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        filename.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+
+      const importDeclarations = sourceFile.statements.filter(ts.isImportDeclaration);
+      if (importDeclarations.length > 0) {
+        const lastImport = importDeclarations[importDeclarations.length - 1]!;
+        const insertPos = lastImport.getEnd();
+        return (
+          source.slice(0, insertPos) +
+          `\n${importStatement}` +
+          source.slice(insertPos)
+        );
+      }
+
+      // Check for directives at start ("use client", "use strict")
+      const directives = sourceFile.statements.filter(
+        (s) => ts.isExpressionStatement(s) && ts.isStringLiteral(s.expression)
+      );
+      if (directives.length > 0) {
+        const lastDirective = directives[directives.length - 1]!;
+        const insertPos = lastDirective.getEnd();
+        return (
+          source.slice(0, insertPos) +
+          `\n\n${importStatement}` +
+          source.slice(insertPos)
+        );
+      }
+
+      return `${importStatement}\n${source}`;
+    } catch {
+      // Fallback to regex if parsing fails
+    }
+  }
+
+  // Generic / Dart regex fallback supporting multiline and side-effect imports
+  const importMatches = Array.from(source.matchAll(/(?:^|\n)(import\s+[\s\S]*?;)/g));
+  if (importMatches.length > 0) {
+    const lastImport = importMatches[importMatches.length - 1]!;
+    const insertPos = (lastImport.index ?? 0) + lastImport[0].length;
+    return (
+      source.slice(0, insertPos) +
+      `\n${importStatement}` +
+      source.slice(insertPos)
+    );
+  }
+
+  // Check for "use client" / "use strict" directives in non-JS or fallback
+  const directiveMatch = source.match(/^(?:['"]use (?:client|strict)['"];?\s*)/m);
+  if (directiveMatch && directiveMatch.index === 0) {
+    const insertPos = directiveMatch[0].length;
+    return (
+      source.slice(0, insertPos) +
+      `\n${importStatement}\n` +
+      source.slice(insertPos)
+    );
+  }
+
+  return `${importStatement}\n${source}`;
+}
 
 /**
  * Validates plan structure before execution.
@@ -202,7 +284,8 @@ export async function applyI18nPlan(
     const transformResult = applySourceChangesToFile(
       relFile,
       originalContent,
-      fileChanges
+      fileChanges,
+      plan?.project?.library
     );
 
     warnings.push(...transformResult.warnings);
@@ -273,21 +356,12 @@ export async function applyI18nPlan(
           stagedSourceFiles.get(entryRelPath) ||
           (await readTextFile(entryAbsPath)) ||
           "";
-        if (!currentEntry.includes(plan.setup.entryImportStatement)) {
-          let updatedEntry = currentEntry;
-          const importMatches = Array.from(
-            currentEntry.matchAll(/^import\s+.*from\s+['"].*['"];?/gm)
-          );
-          if (importMatches.length > 0) {
-            const lastImport = importMatches[importMatches.length - 1]!;
-            const insertPos = (lastImport.index ?? 0) + lastImport[0].length;
-            updatedEntry =
-              currentEntry.slice(0, insertPos) +
-              `\n${plan.setup.entryImportStatement}` +
-              currentEntry.slice(insertPos);
-          } else {
-            updatedEntry = `${plan.setup.entryImportStatement}\n` + currentEntry;
-          }
+        const updatedEntry = injectEntryImport(
+          currentEntry,
+          plan.setup.entryImportStatement,
+          entryRelPath
+        );
+        if (updatedEntry !== currentEntry) {
           stagedSourceFiles.set(entryRelPath, updatedEntry);
           if (!originalFileContents.has(entryRelPath)) {
             originalFileContents.set(entryRelPath, currentEntry);

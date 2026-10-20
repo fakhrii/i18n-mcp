@@ -35,6 +35,30 @@ describe("Phase P3: Dead / Unused Key Pruning & Audit", () => {
     expect(keys.has("UNREFERENCED_KEY")).toBe(false);
   });
 
+  it("does not false-positive match functions ending with 't' or unquoted variables", () => {
+    const code = `
+      start(session);
+      submit(form);
+      format(date);
+      init(config);
+      select(option);
+      post(url);
+      expect(response);
+      t(dynamicVar);
+    `;
+
+    const keys = extractReferencedKeysFromSource(code);
+    expect(keys.has("session")).toBe(false);
+    expect(keys.has("form")).toBe(false);
+    expect(keys.has("date")).toBe(false);
+    expect(keys.has("config")).toBe(false);
+    expect(keys.has("option")).toBe(false);
+    expect(keys.has("url")).toBe(false);
+    expect(keys.has("response")).toBe(false);
+    expect(keys.has("dynamicVar")).toBe(false);
+    expect(keys.size).toBe(0);
+  });
+
   it("extracts Flutter l10n key references from Dart code", () => {
     const code = `
       final text1 = Text(l10n.welcomeMessage);

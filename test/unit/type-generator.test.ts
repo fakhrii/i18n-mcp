@@ -101,4 +101,27 @@ describe("Phase P3: TypeScript Typings Generation (resources.d.ts)", () => {
 
     await fs.rm(tempDir, { recursive: true, force: true });
   });
+
+  it("handles Flutter projects gracefully without throwing errors", async () => {
+    const flutterDir = await fs.mkdtemp(path.join(os.tmpdir(), "flutter-typegen-"));
+    try {
+      await fs.writeFile(
+        path.join(flutterDir, "pubspec.yaml"),
+        "name: flutter_app\ndependencies:\n  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n"
+      );
+      const l10nDir = path.join(flutterDir, "lib/l10n");
+      await fs.mkdir(l10nDir, { recursive: true });
+      await fs.writeFile(
+        path.join(l10nDir, "app_en.arb"),
+        JSON.stringify({ "@@locale": "en", appTitle: "My App" })
+      );
+
+      const result = await generateI18nTypes(flutterDir);
+      expect(result.outputPath).toContain("Flutter gen-l10n");
+      expect(result.content).toContain("flutter gen-l10n");
+      expect(result.namespaces).toEqual(["common"]);
+    } finally {
+      await fs.rm(flutterDir, { recursive: true, force: true });
+    }
+  });
 });

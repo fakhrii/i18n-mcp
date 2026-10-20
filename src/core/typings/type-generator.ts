@@ -27,6 +27,21 @@ export async function generateI18nTypes(
   options: TypeGenOptions = {}
 ): Promise<TypeGenResult> {
   const analysis = await analyzeProject(projectRoot);
+
+  if (analysis.framework === "flutter") {
+    const content = [
+      "// Flutter uses Dart code generation via `flutter gen-l10n` to produce type-safe AppLocalizations classes.",
+      "// TypeScript definitions (.d.ts) are not applicable to Flutter projects.",
+      "// To generate or update Flutter localization classes, run: flutter gen-l10n",
+    ].join("\n");
+
+    return {
+      outputPath: "lib/l10n/app_localizations.dart (Flutter gen-l10n)",
+      content,
+      namespaces: ["common"],
+    };
+  }
+
   const localeDir = analysis.i18n.localeDirectory;
   const sourceLocale = analysis.i18n.sourceLocale || "en";
 

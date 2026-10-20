@@ -207,4 +207,49 @@ describe("i18n Validator Unit Tests", () => {
       await fs.rm(flutterDir, { recursive: true, force: true });
     }
   });
+
+  it("validates mixed JSON structures (top-level objects and top-level strings)", async () => {
+    const singleDir = await fs.mkdtemp(path.join(os.tmpdir(), "mixed-json-val-"));
+    try {
+      await fs.writeFile(
+        path.join(singleDir, "package.json"),
+        JSON.stringify({ name: "mixed-app", dependencies: { "react-i18next": "^12.0.0" } })
+      );
+      const localesDir = path.join(singleDir, "locales");
+      await fs.mkdir(localesDir, { recursive: true });
+
+      await fs.writeFile(
+        path.join(localesDir, "en.json"),
+        JSON.stringify({
+          appName: "My Cool App",
+          auth: {
+            login: "Sign In",
+          },
+        })
+      );
+
+      await fs.writeFile(
+        path.join(localesDir, "es.json"),
+        JSON.stringify({
+          auth: {
+            login: "Iniciar sesión",
+          },
+        })
+      );
+
+      const res = await validateI18n({
+        projectPath: singleDir,
+        locales: ["es"],
+      });
+
+      expect(res.valid).toBe(false);
+      const missingKey = res.issues.find(
+        (i) => i.type === "MISSING_TRANSLATION" && i.key === "appName"
+      );
+      expect(missingKey).toBeDefined();
+      expect(missingKey?.namespace).toBe("common");
+    } finally {
+      await fs.rm(singleDir, { recursive: true, force: true });
+    }
+  });
 });

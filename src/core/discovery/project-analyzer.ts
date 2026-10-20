@@ -6,6 +6,7 @@ import { detectProjectMetadata } from "./project-detector.js";
 import { detectI18n } from "./i18n-detector.js";
 import { detectProjectStructure } from "./feature-detector.js";
 import { dirExists, toPosixPath } from "../../utils/file-system.js";
+import { getFrameworkAdapter } from "../../integrations/adapters/index.js";
 import { logger } from "../../utils/logger.js";
 
 export async function analyzeProject(targetPath?: string): Promise<ProjectAnalysis> {
@@ -34,8 +35,12 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
   // 4. Detect feature / project structure
   const structure = await detectProjectStructure(projectRoot);
 
-  // 5. Compose namespaces
-  // Priority: config namespaces, existing locale namespaces, feature names + 'common'
+  // 5. Detect framework and resolve adapter
+  const framework = config?.framework ?? metadata.framework;
+  const adapter = getFrameworkAdapter(framework);
+
+  // 6. Compose namespaces
+  // Priority: config namespaces, existing locale namespaces, feature names + defaultNamespaces
   const namespacesSet = new Set<string>(i18nResult.namespaces);
 
   if (i18nResult.structureType === "flat") {
@@ -44,7 +49,9 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
   } else {
     // If no namespaces were found in locale files, infer likely namespaces from detected features
     if (namespacesSet.size === 0) {
-      namespacesSet.add("common");
+      for (const ns of adapter.defaultNamespaces) {
+        namespacesSet.add(ns);
+      }
       for (const feature of structure.features) {
         namespacesSet.add(feature);
       }
@@ -53,8 +60,7 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
     }
   }
 
-  // 6. Assemble complete analysis
-  const framework = config?.framework ?? metadata.framework;
+  // 7. Assemble complete analysis
   const warnings = [...i18nResult.warnings];
 
   if (framework === "unknown") {
@@ -78,7 +84,7 @@ export async function analyzeProject(targetPath?: string): Promise<ProjectAnalys
   };
 
   logger.info(
-    `Analysis complete: framework=${analysis.framework}, i18nLibrary=${analysis.i18n.library}, namespaces=[${analysis.namespaces.join(", ")}]`
+    `Analysis complete: framework=${analysis.framework} (${adapter.displayName}), i18nLibrary=${analysis.i18n.library}, namespaces=[${analysis.namespaces.join(", ")}]`
   );
 
   return analysis;

@@ -90,6 +90,12 @@ function findDartStrings(code: string): DartStringMatch[] {
       let content = "";
       while (i < len) {
         if (!isRaw && code[i] === "\\") {
+          // Escaped dollar sign: preserve backslash so interpolation parser does not treat it as a variable
+          if (code[i + 1] === "$") {
+            content += "\\$";
+            i += 2;
+            continue;
+          }
           // Escaped character
           content += code[i + 1] || "";
           i += 2;
@@ -162,8 +168,8 @@ function parseDartInterpolations(content: string): {
   const variables: string[] = [];
   const variableExpressions: Record<string, string> = {};
 
-  // Match ${expression} or $identifier
-  const regex = /\$\{([^}]+)\}|\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  // Match unescaped ${expression} or $identifier (using negative lookbehind for \)
+  const regex = /(?<!\\)(?:\$\{([^}]+)\}|\$([a-zA-Z_][a-zA-Z0-9_]*))/g;
   let templateText = "";
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -194,6 +200,8 @@ function parseDartInterpolations(content: string): {
   }
 
   templateText += content.slice(lastIndex);
+  // Unescape literal \$ -> $
+  templateText = templateText.replace(/\\(\$)/g, "$1");
 
   let isPlural = false;
   let pluralVariable: string | undefined;

@@ -23,6 +23,7 @@ export * from "./mcp/server.js";
 export * from "./mcp/tools/index.js";
 export * from "./integrations/i18next/index.js";
 export * from "./integrations/react-i18next/index.js";
+export * from "./integrations/adapters/index.js";
 export * from "./utils/logger.js";
 export * from "./utils/file-system.js";
 export * from "./utils/nested-json.js";

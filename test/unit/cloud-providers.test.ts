@@ -201,5 +201,19 @@ describe("Cloud Translation Providers & Non-blocking Smart Fallback", () => {
       expect(res.translated).toBe(true);
       expect(res.translatedText).toBe("Ajustes");
     });
+
+    it("factory createTranslationProvider detects cloud provider from options.apiKey in auto mode", () => {
+      // OpenAI key format
+      const openaiProv = createTranslationProvider({ apiKey: "sk-proj-1234567890" });
+      expect((openaiProv as any).cloudProvider).toBeInstanceOf(OpenAiTranslationProvider);
+
+      // Gemini key format
+      const geminiProv = createTranslationProvider({ apiKey: "AIzaSyDemoKey123" });
+      expect((geminiProv as any).cloudProvider).toBeInstanceOf(GeminiTranslationProvider);
+
+      // DeepL key format
+      const deeplProv = createTranslationProvider({ apiKey: "12345678-1234-1234-1234-123456789abc:fx" });
+      expect((deeplProv as any).cloudProvider).toBeInstanceOf(DeeplTranslationProvider);
+    });
   });
 });

@@ -20,6 +20,8 @@ import {
 const COMMON_LOCALE_DIRS = [
   "src/locales",
   "locales",
+  "src/messages",
+  "messages",
   "lib/l10n",
   "l10n",
   "src/assets/locales",

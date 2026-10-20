@@ -77,9 +77,12 @@ export function formatInternationalizeResult(result: InternationalizeResult): st
 
     case "APPLIED":
     case "APPLIED_WITH_WARNINGS":
+    case "PENDING_TRANSLATIONS":
       lines.push(
         result.status === "APPLIED"
           ? "### ✨ Internationalization Applied Successfully"
+          : result.status === "PENDING_TRANSLATIONS"
+          ? "### ⏳ Internationalization Applied (Translations Pending)"
           : "### ⚠️ Internationalization Applied with Warnings"
       );
       lines.push("");

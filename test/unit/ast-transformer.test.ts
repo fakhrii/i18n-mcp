@@ -4,6 +4,7 @@ import {
   injectRequiredImports,
   injectRequiredHooks,
   ensureI18nIntegrity,
+  stripInvalidDartConst,
 } from "../../src/core/replacement/ast-transformer.js";
 import type { SourceChangePlan } from "../../src/models/plan.js";
 
@@ -395,5 +396,154 @@ export const CustomInput = forwardRef((props: any, ref: any) => {
 
       expect(result).toBe(code);
     });
+
+    it("respects next-intl files and does not inject react-i18next", () => {
+      const code = [
+        "'use client';",
+        'import React from "react";',
+        'import { useTranslations } from "next-intl";',
+        '',
+        'export default function HomePage() {',
+        '  const t = useTranslations();',
+        '  return <h1>{t("welcome")}</h1>;',
+        '}',
+      ].join("\n");
+
+      const result = ensureI18nIntegrity(code, "src/app/page.tsx", "common", "next-intl");
+
+      expect(result).not.toContain("react-i18next");
+      expect(result).toContain('import { useTranslations } from "next-intl";');
+      expect(result).toContain("const t = useTranslations();");
+    });
+
+    it("auto-detects next-intl from useTranslations and injects next-intl when missing", () => {
+      const code = [
+        "'use client';",
+        'import React from "react";',
+        '',
+        'export default function HomePage() {',
+        '  return <h1>{t("welcome")}</h1>;',
+        '}',
+      ].join("\n");
+
+      const result = ensureI18nIntegrity(code, "src/app/page.tsx", "common", "next-intl");
+
+      expect(result).not.toContain("react-i18next");
+      expect(result).toContain('import { useTranslations } from "next-intl";');
+      expect(result).toContain("const t = useTranslations();");
+    });
+
+    it("respects next-i18next and injects useTranslation from next-i18next", () => {
+      const code = [
+        'import React from "react";',
+        '',
+        'export default function HomePage() {',
+        '  return <h1>{t("welcome")}</h1>;',
+        '}',
+      ].join("\n");
+
+      const result = ensureI18nIntegrity(code, "pages/index.tsx", "common", "next-i18next");
+
+      expect(result).not.toContain('from "react-i18next"');
+      expect(result).toContain('import { useTranslation } from "next-i18next";');
+      expect(result).toContain('const { t } = useTranslation("common");');
+    });
+  });
+
+  describe("stripInvalidDartConst for Flutter", () => {
+    it("strips const from outer widget when nested child uses AppLocalizations.of(context)", () => {
+      const code = [
+        "Widget build(BuildContext context) {",
+        "  return const Center(",
+        "    child: Column(",
+        "      children: [",
+        "        Text(AppLocalizations.of(context)!.welcome),",
+        "      ],",
+        "    ),",
+        "  );",
+        "}",
+      ].join("\n");
+
+      const result = stripInvalidDartConst(code);
+      expect(result).not.toContain("const Center");
+      expect(result).toContain("return Center(");
+    });
+
+    it("strips const from const list literals containing AppLocalizations.of(context)", () => {
+      const code = [
+        "Widget build(BuildContext context) {",
+        "  return Column(",
+        "    children: const [",
+        "      Text(AppLocalizations.of(context)!.welcome),",
+        "    ],",
+        "  );",
+        "}",
+      ].join("\n");
+
+      const result = stripInvalidDartConst(code);
+      expect(result).not.toContain("const [");
+      expect(result).toContain("children: [");
+    });
+
+    it("preserves sibling const widgets that do not use AppLocalizations", () => {
+      const code = [
+        "Widget build(BuildContext context) {",
+        "  return Column(",
+        "    children: [",
+        "      Text(AppLocalizations.of(context)!.welcome),",
+        "      const SizedBox(height: 16),",
+        "      const Divider(),",
+        "    ],",
+        "  );",
+        "}",
+      ].join("\n");
+
+      const result = stripInvalidDartConst(code);
+      expect(result).toContain("const SizedBox(height: 16)");
+      expect(result).toContain("const Divider()");
+    });
+
+    it("works end-to-end via applySourceChangesToFile on a .dart file", () => {
+      const originalDart = [
+        "import 'package:flutter/material.dart';",
+        "",
+        "class MyWidget extends StatelessWidget {",
+        "  @override",
+        "  Widget build(BuildContext context) {",
+        "    return const Center(",
+        "      child: Text('Hello Flutter'),",
+        "    );",
+        "  }",
+        "}",
+      ].join("\n");
+
+      const changes: SourceChangePlan[] = [
+        {
+          action: "REPLACE",
+          file: "lib/widget.dart",
+          location: { line: 7, column: 19, endLine: 7, endColumn: 34 },
+          source: "'Hello Flutter'",
+          replacement: "AppLocalizations.of(context)!.helloFlutter",
+          namespace: "common",
+          key: "helloFlutter",
+          requiredCodeChanges: [
+            {
+              type: "ADD_IMPORT",
+              module: "package:flutter_gen/gen_l10n/app_localizations.dart",
+              value: "AppLocalizations",
+            },
+          ],
+        },
+      ];
+
+      const res = applySourceChangesToFile("lib/widget.dart", originalDart, changes);
+      expect(res.errors).toHaveLength(0);
+      expect(res.transformedContent).toContain("import 'package:flutter_gen/gen_l10n/app_localizations.dart';");
+      // const Center must have been stripped to Center!
+      expect(res.transformedContent).not.toContain("const Center");
+      expect(res.transformedContent).toContain("return Center(");
+      expect(res.transformedContent).toContain("AppLocalizations.of(context)!.helloFlutter");
+    });
   });
 });
+

@@ -6,6 +6,7 @@ import {
   isNestedJsonObject,
   flattenNestedObject,
   findMatchingPropertyKey,
+  deleteNestedValue,
 } from "../../src/utils/nested-json.js";
 
 describe("nested-json utilities", () => {
@@ -167,6 +168,32 @@ describe("nested-json utilities", () => {
       expect(flat.get("PISPI.ONBOARDING.HERO_TITLE")).toBe("Welcome");
       expect(flat.get("PISPI.ONBOARDING.STEP_COUNT")).toBe("3");
       expect(flat.get("PISPI.ONBOARDING.IS_ACTIVE")).toBe("true");
+    });
+  });
+
+  describe("Prototype Pollution Security", () => {
+    it("prevents modifying Object.prototype via setNestedValue", () => {
+      const target: Record<string, unknown> = {};
+      setNestedValue(target, "__proto__.polluted", "hacked");
+      setNestedValue(target, "constructor.prototype.polluted2", "hacked");
+
+      expect((target as any).polluted).toBeUndefined();
+      expect(({} as any).polluted).toBeUndefined();
+      expect(({} as any).polluted2).toBeUndefined();
+    });
+
+    it("returns undefined when querying dangerous prototype properties via getNestedValue", () => {
+      const target: Record<string, unknown> = { safe: "value" };
+      expect(getNestedValue(target, "__proto__")).toBeUndefined();
+      expect(getNestedValue(target, "__proto__.polluted")).toBeUndefined();
+      expect(getNestedValue(target, "constructor.prototype.polluted")).toBeUndefined();
+    });
+
+    it("does not delete prototype properties via deleteNestedValue", () => {
+      const target: Record<string, unknown> = {};
+      expect(deleteNestedValue(target, "__proto__")).toBe(false);
+      expect(deleteNestedValue(target, "__proto__.toString")).toBe(false);
+      expect(deleteNestedValue(target, "constructor.prototype")).toBe(false);
     });
   });
 });

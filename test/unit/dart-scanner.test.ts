@@ -122,4 +122,28 @@ describe("Phase P2: Flutter & Dart Source Scanner", () => {
     expect(results.map((r) => r.text)).toContain("Multiline Title Content");
     expect(results.map((r) => r.text)).toContain("Enter your phone number");
   });
+
+  it("correctly preserves escaped dollar signs (\\$amount) without mangling into interpolations", () => {
+    const code = [
+      "final text1 = Text('Total balance: \\$amount in USD');",
+      "final text2 = Text('Total price: \\$$price');",
+      "final text3 = Text('Escaped block: \\${literal}');",
+    ].join("\n");
+
+    const results = scanDartSourceFile({ filePath: "lib/escaped_dollars.dart", sourceCode: code });
+    expect(results).toHaveLength(3);
+
+    // text1: \$amount should NOT extract amount as variable
+    expect(results[0]!.text).toBe("Total balance: $amount in USD");
+    expect(results[0]!.variables).toBeUndefined();
+
+    // text2: \$$price should have literal $ and variable price
+    expect(results[1]!.text).toBe("Total price: ${{price}}");
+    expect(results[1]!.variables).toEqual(["price"]);
+    expect(results[1]!.variableExpressions).toEqual({ price: "price" });
+
+    // text3: \${literal} should be literal ${literal} without extracting variable
+    expect(results[2]!.text).toBe("Escaped block: ${literal}");
+    expect(results[2]!.variables).toBeUndefined();
+  });
 });

@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { applyI18nPlan } from "../../src/core/replacement/plan-applicator.js";
+import { applyI18nPlan, injectEntryImport } from "../../src/core/replacement/plan-applicator.js";
 import type { I18nPlan } from "../../src/models/plan.js";
 
 describe("Plan Applicator", () => {
@@ -166,4 +166,39 @@ describe("Plan Applicator", () => {
     expect(diskLocale.LOGIN).toBe("Log in");
     expect(diskLocale.WELCOME_BACK).toBe("Welcome back");
   });
+
+  describe("injectEntryImport", () => {
+    it("places import after 'use client' directive when no prior imports exist", () => {
+      const source = `'use client';\n\nexport default function Page() {\n  return <div>Hello</div>;\n}\n`;
+      const result = injectEntryImport(source, 'import "@/i18n";', "page.tsx");
+      expect(result.startsWith("'use client';\n\nimport \"@/i18n\";")).toBe(true);
+    });
+
+    it("places import after existing multiline and side-effect imports", () => {
+      const source = [
+        "'use client';",
+        'import "react-native-gesture-handler";',
+        "import {",
+        "  useState,",
+        "  useEffect,",
+        '} from "react";',
+        "",
+        "export function App() {}",
+      ].join("\n");
+
+      const result = injectEntryImport(source, 'import "./i18n";', "App.tsx");
+      const lines = result.split("\n");
+      const i18nIndex = lines.findIndex((l) => l.includes('import "./i18n";'));
+      const reactImportEndIndex = lines.findIndex((l) => l.includes('} from "react";'));
+
+      expect(i18nIndex).toBeGreaterThan(reactImportEndIndex);
+    });
+
+    it("does not duplicate import if already present", () => {
+      const source = 'import "./i18n";\nimport React from "react";\n';
+      const result = injectEntryImport(source, 'import "./i18n";', "index.ts");
+      expect(result).toBe(source);
+    });
+  });
 });
+

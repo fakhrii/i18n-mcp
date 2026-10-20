@@ -19,6 +19,7 @@ import {
   resolveExistingTranslation,
 } from "./existing-key-resolver.js";
 import { resolveKeyCollision } from "./key-collision-resolver.js";
+import { getFrameworkAdapter } from "../../integrations/adapters/index.js";
 import {
   analyzeFileTranslationContext,
   buildReplacementExpression,
@@ -256,6 +257,9 @@ export async function generateI18nPlan(
     primaryAccessPattern = analysis.accessPatterns[0]!;
   }
 
+  const adapter = getFrameworkAdapter(analysis.framework);
+  const defaultPattern = adapter.getDefaultTranslationPattern();
+
   const targetLibrary =
     analysis.i18n.library !== "none"
       ? analysis.i18n.library
@@ -308,8 +312,7 @@ export async function generateI18nPlan(
   if (analysis.accessPatterns.length === 0 && analysis.i18n.library === "none") {
     warnings.push({
       code: "NO_ESTABLISHED_ACCESS_PATTERN",
-      message:
-        "No established translation access pattern detected. Defaulting to react-i18next useTranslation hook.",
+      message: `No established translation access pattern detected. Defaulting to ${adapter.displayName} pattern (${defaultPattern.hookOrAccessor}).`,
       severity: "warning",
     });
   }

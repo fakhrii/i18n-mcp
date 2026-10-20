@@ -245,6 +245,7 @@ export async function validateI18n(
     } else {
       // Single file structure: locales/<locale>.json
       const relFile = toPosixPath(path.join(localeDir, `${locale}.json`));
+      localeFiles.set(locale, relFile);
       const absFile = path.join(projectRoot, relFile);
 
       if (!(await fileExists(absFile))) {
@@ -279,6 +280,7 @@ export async function validateI18n(
 
       // Check if top-level keys are namespaces
       let isNamespaced = false;
+      const rootStrings: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(parsed)) {
         if (typeof v === "object" && v !== null && !Array.isArray(v)) {
           isNamespaced = true;
@@ -286,6 +288,8 @@ export async function validateI18n(
           namespacesCheckedSet.add(k);
           const flat = flattenEntries(v as Record<string, unknown>);
           localeMap.set(k, flat);
+        } else {
+          rootStrings[k] = v;
         }
       }
 
@@ -294,6 +298,17 @@ export async function validateI18n(
         if (!filterNamespaces || filterNamespaces.has(ns)) {
           namespacesCheckedSet.add(ns);
           localeMap.set(ns, flattenEntries(parsed));
+        }
+      } else if (Object.keys(rootStrings).length > 0) {
+        const ns = "common";
+        if (!filterNamespaces || filterNamespaces.has(ns)) {
+          namespacesCheckedSet.add(ns);
+          const existing = localeMap.get(ns) || new Map<string, string>();
+          const flatRoots = flattenEntries(rootStrings);
+          for (const [rk, rv] of flatRoots.entries()) {
+            existing.set(rk, rv);
+          }
+          localeMap.set(ns, existing);
         }
       }
     }
