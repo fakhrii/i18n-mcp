@@ -15,6 +15,7 @@ import {
   readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
+import { isArbFile, parseArb, type ArbFile } from "../locale/arb-handler.js";
 import { logger } from "../../utils/logger.js";
 
 /**
@@ -140,10 +141,62 @@ export async function validateI18n(
       ? new Set(input.namespaces)
       : null;
 
+  const dirFiles = await listFiles(fullLocaleDir);
+  const isArb = dirFiles.some((f) => isArbFile(f)) || analysis.framework === "flutter";
+  const localeFiles = new Map<string, string>();
+
   // 2. Load translations and check for MALFORMED_JSON
   for (const locale of allLocalesToCheck) {
     const localeMap = new Map<string, Map<string, string>>();
     translationsByLocale.set(locale, localeMap);
+
+    if (isArb) {
+      const candFiles = [`app_${locale}.arb`, `intl_${locale}.arb`, `${locale}.arb`];
+      let foundArb = dirFiles.find((f) => candFiles.includes(f));
+      if (!foundArb) {
+        foundArb = dirFiles.find(
+          (f) => isArbFile(f) && (f.includes(`_${locale}.arb`) || f === `${locale}.arb`)
+        );
+      }
+
+      if (!foundArb) {
+        if (locale !== sourceLocale) {
+          issues.push({
+            type: "MISSING_TRANSLATION",
+            severity: "error",
+            namespace: "all",
+            locale,
+            message: `ARB file for locale '${locale}' does not exist in ${toPosixPath(localeDir)}.`,
+          });
+        }
+        continue;
+      }
+
+      const relFile = toPosixPath(path.join(localeDir, foundArb));
+      localeFiles.set(locale, relFile);
+      const absFile = path.join(projectRoot, relFile);
+      const rawContent = (await readTextFile(absFile)) || "";
+
+      let arb: ArbFile;
+      try {
+        arb = parseArb(rawContent);
+      } catch {
+        issues.push({
+          type: "MALFORMED_JSON",
+          severity: "error",
+          namespace: "common",
+          locale,
+          file: relFile,
+          message: `Malformed ARB file: ${relFile}`,
+        });
+        continue;
+      }
+
+      const ns = "common";
+      namespacesCheckedSet.add(ns);
+      localeMap.set(ns, arb.entries);
+      continue;
+    }
 
     if (isSubdirStructure) {
       const localePath = path.join(fullLocaleDir, locale);
@@ -266,7 +319,7 @@ export async function validateI18n(
       const targetKeys = targetTranslations.get(ns);
       const targetFile = isSubdirStructure
         ? toPosixPath(path.join(localeDir, targetLocale, `${ns}.json`))
-        : toPosixPath(path.join(localeDir, `${targetLocale}.json`));
+        : localeFiles.get(targetLocale) || toPosixPath(path.join(localeDir, `${targetLocale}.json`));
 
       for (const [key, sourceValue] of sourceKeys.entries()) {
         const targetValue = targetKeys?.get(key);
@@ -323,7 +376,7 @@ export async function validateI18n(
       const sourceKeys = sourceTranslations.get(ns);
       const targetFile = isSubdirStructure
         ? toPosixPath(path.join(localeDir, targetLocale, `${ns}.json`))
-        : toPosixPath(path.join(localeDir, `${targetLocale}.json`));
+        : localeFiles.get(targetLocale) || toPosixPath(path.join(localeDir, `${targetLocale}.json`));
 
       for (const key of targetKeys.keys()) {
         if (!sourceKeys || !sourceKeys.has(key)) {

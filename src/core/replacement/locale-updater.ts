@@ -111,7 +111,8 @@ function resolveTargetKeyPath(
 export async function prepareLocaleUpdates(
   projectRoot: string,
   translations: TranslationPlan[],
-  structureType?: I18nStructureType
+  structureType?: I18nStructureType,
+  framework?: string
 ): Promise<LocaleUpdateResult> {
   const stagedFiles = new Map<string, string>();
   const warnings: ApplyWarning[] = [];
@@ -198,6 +199,30 @@ export async function prepareLocaleUpdates(
     let entriesAdded = 0;
     for (const entry of newEntries) {
       if (entry.isPlural && entry.pluralForm) {
+        const isNextIntl =
+          framework === "nextjs" ||
+          relPath.toLowerCase().includes("messages") ||
+          relPath.startsWith("messages/") ||
+          relPath.startsWith("messages\\");
+
+        if (isNextIntl) {
+          const icuValue = formatIcuPlural(
+            entry.pluralForm,
+            entry.pluralVariable || "count"
+          );
+          const targetPath = resolveTargetKeyPath(
+            parsed,
+            entry.namespace,
+            entry.key,
+            relPath,
+            structureType
+          );
+          setNestedValue(parsed, targetPath, icuValue);
+          entriesAdded++;
+          translationEntriesCreated++;
+          continue;
+        }
+
         const pathOne = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_one`, relPath, structureType);
         const pathOther = resolveTargetKeyPath(parsed, entry.namespace, `${entry.key}_other`, relPath, structureType);
 

@@ -104,4 +104,22 @@ describe("Phase P2: Flutter & Dart Source Scanner", () => {
     const results = scanDartSourceFile({ filePath: "lib/debug.dart", sourceCode: code });
     expect(results).toHaveLength(0);
   });
+
+  it("detects user-facing strings across newlines in multiline widgets and props", () => {
+    const code = `
+      final widget = Text(
+        'Multiline Title Content',
+        style: TextStyle(fontSize: 16),
+      );
+      final input = InputDecoration(
+        hintText:
+            'Enter your phone number',
+      );
+    `;
+
+    const results = scanDartSourceFile({ filePath: "lib/multiline.dart", sourceCode: code });
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.text)).toContain("Multiline Title Content");
+    expect(results.map((r) => r.text)).toContain("Enter your phone number");
+  });
 });

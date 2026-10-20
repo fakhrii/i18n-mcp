@@ -12,6 +12,7 @@ export interface FileTranslationContext {
   hasL10nAccessor?: boolean;
   boundNamespaces: string[];
   accessPattern: "useTranslation" | "i18n.t" | "custom" | "none";
+  i18nLibrary?: string;
 }
 
 /**
@@ -19,7 +20,8 @@ export interface FileTranslationContext {
  */
 export function analyzeFileTranslationContext(
   fileContent: string,
-  projectAccessPattern: string = "useTranslation"
+  projectAccessPattern: string = "useTranslation",
+  _i18nLibrary: string = "react-i18next"
 ): FileTranslationContext {
   // Strip comments so commented-out imports don't lead to false positives
   const strippedContent = fileContent
@@ -27,7 +29,7 @@ export function analyzeFileTranslationContext(
     .replace(/\/\/.*$/gm, "");
 
   const hasUseTranslationImport =
-    /import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(
+    /import\s+{[^}]*\b(useTranslation|useTranslations)\b[^}]*}\s+from\s+['"](react-i18next|next-intl|next-i18next)['"]/.test(
       strippedContent
     );
   const hasTransImport =
@@ -37,7 +39,9 @@ export function analyzeFileTranslationContext(
   const hasI18nImport =
     /import\s+.*i18n.*from\s+['"].*['"]/.test(strippedContent);
 
-  const hasUseTranslationCall = /useTranslation\s*\(/.test(strippedContent);
+  const hasUseTranslationCall = /(?:useTranslation|useTranslations)\s*\(/.test(
+    strippedContent
+  );
 
   const hasAppLocalizationsImport =
     strippedContent.includes("app_localizations.dart") ||
@@ -223,6 +227,28 @@ export function determineRequiredCodeChanges(
   const targetList = Array.isArray(targetNamespace)
     ? targetNamespace
     : [targetNamespace];
+
+  if (fileContext.i18nLibrary === "next-intl") {
+    if (!fileContext.hasUseTranslationImport) {
+      changes.push({
+        type: "ADD_IMPORT",
+        value: "useTranslations",
+        module: "next-intl",
+      });
+    }
+
+    if (!fileContext.hasUseTranslationCall && fileContext.boundNamespaces.length === 0) {
+      const hookVal =
+        targetList.length === 1 && targetList[0] !== "common"
+          ? `const t = useTranslations("${targetList[0]}")`
+          : `const t = useTranslations()`;
+      changes.push({
+        type: "ADD_HOOK",
+        value: hookVal,
+      });
+    }
+    return changes;
+  }
 
   if (fileContext.accessPattern === "useTranslation" || fileContext.accessPattern === "custom") {
     if (!fileContext.hasUseTranslationImport) {

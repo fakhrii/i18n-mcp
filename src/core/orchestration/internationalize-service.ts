@@ -297,6 +297,8 @@ export async function internationalizeProject(
         namespaces: input.namespaces,
         dryRun: false,
         providedTranslations: input.providedTranslations,
+        provider: input.provider,
+        apiKey: input.apiKey,
       });
 
       transMeta = {

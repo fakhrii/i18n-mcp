@@ -26,12 +26,28 @@ export const translateI18nSchema = {
     .optional()
     .default(false)
     .describe("If true, calculates translations and reports results without writing files to disk."),
+  providedTranslations: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Map of target locale to translations provided by the agent (e.g. { fr: { common: { save: 'Enregistrer' } } } or { fr: { 'common:save': 'Enregistrer' } } or { fr: { save: 'Enregistrer' } })."
+    ),
+  provider: z
+    .enum(["auto", "deepl", "openai", "gemini", "dictionary"])
+    .optional()
+    .describe(
+      "Optional translation provider ('auto', 'deepl', 'openai', 'gemini', or 'dictionary'). Defaults to 'auto' (checks environment keys with non-blocking fallback to dictionary)."
+    ),
+  apiKey: z
+    .string()
+    .optional()
+    .describe("Optional API key for the chosen cloud translation provider. If omitted, checks environment variables."),
 };
 
 export function registerTranslateI18nTool(server: McpServer): void {
   server.tool(
     "translate_i18n",
-    "Translate missing keys across target locale files using built-in dictionaries and glossary without overwriting existing translations.",
+    "Translate missing keys across target locale files using built-in dictionaries, optional cloud providers (DeepL, OpenAI, Gemini), or agent translations without overwriting existing translations.",
     translateI18nSchema,
     async ({
       projectPath,
@@ -39,9 +55,12 @@ export function registerTranslateI18nTool(server: McpServer): void {
       targetLocales,
       namespaces,
       dryRun,
+      providedTranslations,
+      provider,
+      apiKey,
     }) => {
       logger.info(
-        `Invoking translate_i18n (dryRun=${dryRun ?? false}, projectPath=${projectPath})`
+        `Invoking translate_i18n (dryRun=${dryRun ?? false}, projectPath=${projectPath}, provider=${provider || "auto"})`
       );
       try {
         const result = await translateI18n({
@@ -50,6 +69,9 @@ export function registerTranslateI18nTool(server: McpServer): void {
           targetLocales,
           namespaces,
           dryRun: dryRun ?? false,
+          providedTranslations,
+          provider,
+          apiKey,
         });
 
         const summaryText = [

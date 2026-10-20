@@ -110,9 +110,9 @@ Format the MCP response into clean Markdown:
 - **If `status: "REVIEW_REQUIRED"`**:
   Highlight specific strings requiring human judgment before automated migration.
 
-### Step 5: Apply on User Confirmation
+### Step 5: Apply on User Confirmation & Translation Providers
 If the developer replies with confirmation (e.g. "apply", "proceed", "yes, apply"):
-Re-invoke the MCP tool with:
+The tool supports optional cloud translation providers (`deepl`, `openai`, `gemini`) which are **non-blocking** (seamlessly falling back to local offline dictionaries if keys are not provided or network fails), as well as direct agent-provided translations via `providedTranslations`:
 ```json
 {
   "ServerName": "react-native-i18n",
@@ -122,11 +122,24 @@ Re-invoke the MCP tool with:
     "dryRun": false,
     "apply": true,
     "translate": <translateRequested>,
-    "candidateDecisions": <resolvedDecisionsIfAny>
+    "provider": "auto",
+    "candidateDecisions": <resolvedDecisionsIfAny>,
+    "providedTranslations": {
+      "es": { "customTerm": "Término personalizado" },
+      "fr": { "customTerm": "Terme personnalisé" }
+    }
   }
 }
 ```
 Present the final applied report and validation results.
+
+### ICU MessageFormat & Plural Support
+- **Flutter ARB**: Generates ICU plurals (`{count, plural, =0{...} =1{...} other{...}}`) with automated `@key.placeholders` metadata (`count: { type: "num", format: "compact" }`).
+- **Next.js (`next-intl`)**: Generates single-key ICU MessageFormat plural definitions in `messages/*.json`.
+- **React / React Native (`react-i18next`)**: Generates `_one` and `_other` dual keys for standard runtime resolution.
+
+### Step 6: Generate TypeScript Typings (TypeScript Projects)
+If the project is a TypeScript project with `i18next` / `react-i18next` / `next-intl`, invoke `generate_i18n_types` (or recommend `npx i18n-mcp types`) to create or update `src/@types/resources.d.ts` for full compile-time key validation.
 
 ---
 

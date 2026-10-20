@@ -123,7 +123,7 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
     );
     const endPos = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
-    const suggestedKey = generateSemanticKey(trimmed);
+    const suggestedKey = generateSemanticKey(trimmed, propName || componentName);
     const suggestedNamespace = resolveSuggestedNamespace(
       filePath,
       trimmed,

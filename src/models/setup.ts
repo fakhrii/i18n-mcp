@@ -1,3 +1,5 @@
+import type { I18nLibraryType } from "./project.js";
+
 export interface I18nSetupFile {
   path: string;
   content: string;
@@ -6,7 +8,7 @@ export interface I18nSetupFile {
 
 export interface I18nSetupPlan {
   needed: boolean;
-  library: "react-i18next";
+  library: I18nLibraryType;
   configFile: string;
   localeDirectory: string;
   entryFile?: string;

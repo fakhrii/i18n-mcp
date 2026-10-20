@@ -38,6 +38,79 @@ export async function planI18nSetup(
   const targetLocales = options?.targetLocales || analysis.i18n.targetLocales || [];
   const defaultNS = options?.namespace || "common";
 
+  // Framework-specific greenfield setups
+  if (analysis.framework === "flutter") {
+    const filesToCreate: I18nSetupFile[] = [
+      {
+        path: "l10n.yaml",
+        content: `arb-dir: lib/l10n\ntemplate-arb-file: app_${sourceLocale}.arb\noutput-localization-file: app_localizations.dart\n`,
+        type: "CONFIG",
+      },
+    ];
+
+    const allLocales = Array.from(new Set([sourceLocale, ...targetLocales]));
+    for (const loc of allLocales) {
+      filesToCreate.push({
+        path: `lib/l10n/app_${loc}.arb`,
+        content: JSON.stringify({ "@@locale": loc }, null, 2) + "\n",
+        type: "LOCALE_RESOURCE",
+      });
+    }
+
+    return {
+      needed: true,
+      library: "flutter_localizations",
+      configFile: "l10n.yaml",
+      localeDirectory: "lib/l10n",
+      filesToCreate,
+      dependenciesToAdd: {
+        "flutter_localizations": "sdk: flutter",
+        "intl": "any",
+      },
+    };
+  }
+
+  if (analysis.framework === "nextjs") {
+    const messagesDir = hasSrcDir ? "src/messages" : "messages";
+    const configFile = hasSrcDir ? "src/i18n/request.ts" : "i18n/request.ts";
+    const filesToCreate: I18nSetupFile[] = [
+      {
+        path: configFile,
+        content: `import { getRequestConfig } from "next-intl/server";
+
+export default getRequestConfig(async () => {
+  const locale = "${sourceLocale}";
+  return {
+    locale,
+    messages: (await import("../${messagesDir.replace(/^src\//, "")}/\${locale}.json")).default,
+  };
+});
+`,
+        type: "CONFIG",
+      },
+    ];
+
+    const allLocales = Array.from(new Set([sourceLocale, ...targetLocales]));
+    for (const loc of allLocales) {
+      filesToCreate.push({
+        path: `${messagesDir}/${loc}.json`,
+        content: "{\n}\n",
+        type: "LOCALE_RESOURCE",
+      });
+    }
+
+    return {
+      needed: true,
+      library: "next-intl",
+      configFile,
+      localeDirectory: messagesDir,
+      filesToCreate,
+      dependenciesToAdd: {
+        "next-intl": "^3.26.0",
+      },
+    };
+  }
+
   // 1. Determine config and locale directories
   const configFilePath = hasSrcDir
     ? isTs

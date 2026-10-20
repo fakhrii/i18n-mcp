@@ -90,4 +90,75 @@ describe("Greenfield i18n Setup Planner", () => {
     expect(plan.entryFile).toBe("index.js");
     expect(plan.entryImportStatement).toBe(`import "./i18n";`);
   });
+
+  it("plans setup for Flutter project with l10n.yaml and ARB catalogs", async () => {
+    const mockFlutterAnalysis: ProjectAnalysis = {
+      framework: "flutter",
+      language: "dart",
+      packageManager: "pub",
+      i18n: {
+        library: "none",
+        detected: false,
+        localeDirectory: null,
+        sourceLocale: "en",
+        targetLocales: ["es"],
+        needsSetup: true,
+      },
+      namespaces: ["app_en"],
+      projectStructure: { features: [], screens: [] },
+      accessPatterns: [],
+      warnings: [],
+    };
+
+    const plan = await planI18nSetup(tempDir, mockFlutterAnalysis, {
+      sourceLocale: "en",
+      targetLocales: ["es"],
+    });
+
+    expect(plan.needed).toBe(true);
+    expect(plan.library).toBe("flutter_localizations");
+    expect(plan.configFile).toBe("l10n.yaml");
+    expect(plan.localeDirectory).toBe("lib/l10n");
+    expect(plan.dependenciesToAdd).toHaveProperty("flutter_localizations");
+    expect(plan.dependenciesToAdd).toHaveProperty("intl");
+    expect(plan.filesToCreate.some((f) => f.path === "l10n.yaml")).toBe(true);
+    expect(plan.filesToCreate.some((f) => f.path === "lib/l10n/app_en.arb")).toBe(true);
+    expect(plan.filesToCreate.some((f) => f.path === "lib/l10n/app_es.arb")).toBe(true);
+  });
+
+  it("plans setup for Next.js project with next-intl and request.ts", async () => {
+    await fs.mkdir(path.join(tempDir, "src"), { recursive: true });
+
+    const mockNextAnalysis: ProjectAnalysis = {
+      framework: "nextjs",
+      language: "typescript",
+      packageManager: "npm",
+      i18n: {
+        library: "none",
+        detected: false,
+        localeDirectory: null,
+        sourceLocale: "en",
+        targetLocales: ["fr"],
+        needsSetup: true,
+      },
+      namespaces: ["common"],
+      projectStructure: { features: [], screens: [] },
+      accessPatterns: [],
+      warnings: [],
+    };
+
+    const plan = await planI18nSetup(tempDir, mockNextAnalysis, {
+      sourceLocale: "en",
+      targetLocales: ["fr"],
+    });
+
+    expect(plan.needed).toBe(true);
+    expect(plan.library).toBe("next-intl");
+    expect(plan.configFile).toBe("src/i18n/request.ts");
+    expect(plan.localeDirectory).toBe("src/messages");
+    expect(plan.dependenciesToAdd).toHaveProperty("next-intl");
+    expect(plan.filesToCreate.some((f) => f.path === "src/i18n/request.ts")).toBe(true);
+    expect(plan.filesToCreate.some((f) => f.path === "src/messages/en.json")).toBe(true);
+    expect(plan.filesToCreate.some((f) => f.path === "src/messages/fr.json")).toBe(true);
+  });
 });

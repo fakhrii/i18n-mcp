@@ -6,6 +6,8 @@ import { analyzeProject } from "../../src/core/discovery/project-analyzer.js";
 import { scanHardcodedTexts } from "../../src/core/scanner/scanner.js";
 import { generateI18nPlan } from "../../src/core/planning/plan-generator.js";
 import { applyI18nPlan } from "../../src/core/replacement/plan-applicator.js";
+import { translateI18n } from "../../src/core/translation/translation-service.js";
+import { validateI18n } from "../../src/core/validation/i18n-validator.js";
 import { fileExists, readJsonFile, readTextFile } from "../../src/utils/file-system.js";
 
 describe("Cross-Framework End-to-End Internationalization Tests", () => {
@@ -181,6 +183,26 @@ class MyApp extends StatelessWidget {
       // Verify Idempotency: re-scanning should find 0 remaining hardcoded user-facing strings
       const reScan = await scanHardcodedTexts(tempDir);
       expect(reScan.userFacingCount).toBe(0);
+
+      // Translate to Spanish
+      const transRes = await translateI18n({
+        projectPath: tempDir,
+        targetLocales: ["es"],
+        dryRun: false,
+      });
+      expect(transRes.errors).toHaveLength(0);
+      expect(transRes.filesModified).toContain("lib/l10n/app_es.arb");
+
+      // Validate ARB catalogs
+      const valRes = await validateI18n({
+        projectPath: tempDir,
+        locales: ["es"],
+      });
+      if (!valRes.valid) {
+        console.error("DEBUG valRes issues:", JSON.stringify(valRes.issues, null, 2));
+      }
+      expect(valRes.valid).toBe(true);
+      expect(valRes.errorCount).toBe(0);
     });
   });
 
@@ -416,6 +438,100 @@ export default function App() {
       expect(await fileExists(localePath)).toBe(true);
       const localeJson = await readJsonFile<any>(localePath);
       expect(Object.keys(localeJson).length).toBeGreaterThanOrEqual(5);
+    });
+  });
+
+  // =========================================================================
+  // 4. NEXT.JS FRAMEWORK LIFECYCLE
+  // =========================================================================
+  describe("Next.js Framework Lifecycle", () => {
+    beforeEach(async () => {
+      // 1. package.json with next, react, react-dom
+      await fs.writeFile(
+        path.join(tempDir, "package.json"),
+        JSON.stringify(
+          {
+            name: "sample-nextjs-app",
+            version: "1.0.0",
+            dependencies: {
+              next: "14.2.5",
+              react: "18.3.1",
+              "react-dom": "18.3.1",
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      // 2. tsconfig.json
+      await fs.writeFile(
+        path.join(tempDir, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { jsx: "preserve" } })
+      );
+
+      // 3. src/app/page.tsx with 'use client' and UI sinks
+      const appDir = path.join(tempDir, "src", "app");
+      await fs.mkdir(appDir, { recursive: true });
+      await fs.writeFile(
+        path.join(appDir, "page.tsx"),
+        `'use client';
+
+import React from 'react';
+
+export default function HomePage() {
+  return (
+    <div>
+      <h1>Welcome to Next.js App</h1>
+      <p>Build global server and client applications</p>
+      <input type="text" placeholder="Search documentation" />
+      <button aria-label="Explore features">Get Started</button>
+    </div>
+  );
+}
+`,
+        "utf8"
+      );
+    });
+
+    it("analyzes Next.js project and plans setup with next-intl and messages directory", async () => {
+      const analysis = await analyzeProject(tempDir);
+      expect(analysis.framework).toBe("nextjs");
+      expect(analysis.language).toBe("typescript");
+      expect(analysis.i18n.needsSetup).toBe(true);
+
+      const plan = await generateI18nPlan({ projectPath: tempDir });
+      expect(plan.setup).toBeDefined();
+      expect(plan.setup?.library).toBe("next-intl");
+      expect(plan.setup?.configFile).toBe("src/i18n/request.ts");
+      expect(plan.setup?.localeDirectory).toBe("src/messages");
+      expect(plan.setup?.dependenciesToAdd).toHaveProperty("next-intl");
+
+      const applyResult = await applyI18nPlan({
+        projectPath: tempDir,
+        plan,
+        dryRun: false,
+      });
+
+      expect(applyResult.success).toBe(true);
+      expect(applyResult.sourceChangesApplied).toBeGreaterThanOrEqual(4);
+
+      // Verify page.tsx updated with useTranslations and t(...)
+      const updatedPage = await readTextFile(path.join(tempDir, "src", "app", "page.tsx"));
+      expect(updatedPage).toContain("import { useTranslations } from \"next-intl\";");
+      expect(updatedPage).toContain("const t = useTranslations(");
+      expect(updatedPage).toContain("<h1>{t(");
+      expect(updatedPage).toContain("<p>{t(");
+      expect(updatedPage).toContain("placeholder={t(");
+
+      // Verify request.ts created
+      const requestTs = await readTextFile(path.join(tempDir, "src", "i18n", "request.ts"));
+      expect(requestTs).toContain("getRequestConfig");
+      expect(requestTs).toContain("next-intl/server");
+
+      // Verify messages file created
+      const messagesEn = path.join(tempDir, "src", "messages", "en.json");
+      expect(await fileExists(messagesEn)).toBe(true);
     });
   });
 });
