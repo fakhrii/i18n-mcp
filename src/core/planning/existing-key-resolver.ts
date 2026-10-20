@@ -259,6 +259,7 @@ export async function loadExistingTranslations(
       if (content) {
         // If top-level values are objects, treat top keys as namespaces
         let hasNamespaces = false;
+        const rootStrings: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(content)) {
           if (typeof v === "object" && v !== null && !Array.isArray(v)) {
             hasNamespaces = true;
@@ -280,6 +281,8 @@ export async function loadExistingTranslations(
                 commonItems.push(item);
               }
             }
+          } else {
+            rootStrings[k] = v;
           }
         }
 
@@ -288,6 +291,23 @@ export async function loadExistingTranslations(
           const nsMap = byNamespace.get(ns) || new Map<string, string>();
           byNamespace.set(ns, nsMap);
           const flat = flattenTranslations(content);
+          for (const [key, val] of flat.entries()) {
+            nsMap.set(key, val);
+            const item: ExistingTranslationItem = {
+              namespace: ns,
+              key,
+              value: val,
+              normalizedValue: normalizeText(val),
+              sourceFile: toPosixPath(path.relative(projectRoot, singleFile)),
+            };
+            items.push(item);
+            commonItems.push(item);
+          }
+        } else if (Object.keys(rootStrings).length > 0) {
+          const ns = "common";
+          const nsMap = byNamespace.get(ns) || new Map<string, string>();
+          byNamespace.set(ns, nsMap);
+          const flat = flattenTranslations(rootStrings);
           for (const [key, val] of flat.entries()) {
             nsMap.set(key, val);
             const item: ExistingTranslationItem = {

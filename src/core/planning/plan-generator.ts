@@ -97,6 +97,7 @@ async function loadTargetLocaleTranslations(
       const content = await readJsonFile<Record<string, unknown>>(singleFile);
       if (content) {
         let hasNamespaces = false;
+        const rootStrings: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(content)) {
           if (typeof v === "object" && v !== null && !Array.isArray(v)) {
             hasNamespaces = true;
@@ -106,6 +107,8 @@ async function loadTargetLocaleTranslations(
               nsMap.set(subK, subV);
             }
             localeMap.set(k, nsMap);
+          } else {
+            rootStrings[k] = v;
           }
         }
 
@@ -113,6 +116,14 @@ async function loadTargetLocaleTranslations(
           const ns = "common";
           const nsMap = localeMap.get(ns) || new Map<string, string>();
           const flat = flattenNestedObject(content);
+          for (const [subK, subV] of flat.entries()) {
+            nsMap.set(subK, subV);
+          }
+          localeMap.set(ns, nsMap);
+        } else if (Object.keys(rootStrings).length > 0) {
+          const ns = "common";
+          const nsMap = localeMap.get(ns) || new Map<string, string>();
+          const flat = flattenNestedObject(rootStrings);
           for (const [subK, subV] of flat.entries()) {
             nsMap.set(subK, subV);
           }
