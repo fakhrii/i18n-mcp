@@ -29,10 +29,10 @@ export function extractReferencedKeysFromSource(sourceContent: string): Set<stri
 
   // 1. Match t("KEY"), t('KEY'), t(`KEY`), i18n.t("KEY"), translate("KEY")
   const tCallRegex =
-    /(?:t|i18n\.t|translate)\s*\(\s*["'`]?([a-zA-Z0-9_.:-]+)["'`]?/g;
+    /\b(?:t|i18n\.t|translate)\s*\(\s*(['"`])([a-zA-Z0-9_.:/-]+)\1/g;
   let match: RegExpExecArray | null;
   while ((match = tCallRegex.exec(sourceContent)) !== null) {
-    const rawKey = match[1];
+    const rawKey = match[2];
     if (rawKey) {
       referencedKeys.add(rawKey);
       // If colon or dot namespaced: 'auth:LOGIN' or 'auth.LOGIN'
@@ -48,9 +48,9 @@ export function extractReferencedKeysFromSource(sourceContent: string): Set<stri
   }
 
   // 2. Match <Trans i18nKey="KEY" ...>
-  const transRegex = /<Trans[^>]*\bi18nKey=["']([^"']+)["']/g;
+  const transRegex = /<Trans[^>]*\bi18nKey=(['"])([^'"]+)\1/g;
   while ((match = transRegex.exec(sourceContent)) !== null) {
-    const rawKey = match[1];
+    const rawKey = match[2];
     if (rawKey) {
       referencedKeys.add(rawKey);
       if (rawKey.includes(":")) {

@@ -11,10 +11,12 @@ import { createTranslationProvider } from "./cloud-providers.js";
 import { analyzeProject } from "../discovery/project-analyzer.js";
 import { loadProjectConfig } from "../../config/config-loader.js";
 import { loadExistingTranslations } from "../planning/existing-key-resolver.js";
+import type { I18nStructureType } from "../../models/project.js";
 import {
   dirExists,
   fileExists,
   listFiles,
+  readJsonFile,
   readTextFile,
   toPosixPath,
 } from "../../utils/file-system.js";
@@ -62,13 +64,18 @@ export function lookupProvidedTranslation(
 
   if (!localeData || typeof localeData !== "object") return undefined;
 
-  // 1. Nested namespace: provided[locale][namespace][key]
+  // 1. Nested namespace: provided[locale][namespace][key] (shallow or nested path)
   if (
     typeof localeData[namespace] === "object" &&
-    localeData[namespace] !== null &&
-    typeof localeData[namespace][key] === "string"
+    localeData[namespace] !== null
   ) {
-    return localeData[namespace][key];
+    if (typeof localeData[namespace][key] === "string") {
+      return localeData[namespace][key];
+    }
+    const nestedInNs = getNestedValue(localeData[namespace], key);
+    if (typeof nestedInNs === "string") {
+      return nestedInNs;
+    }
   }
 
   // 2. Colon-prefixed compound key: provided[locale]['namespace:key']
@@ -77,15 +84,23 @@ export function lookupProvidedTranslation(
     return localeData[colonKey];
   }
 
-  // 3. Dot-prefixed compound key: provided[locale]['namespace.key']
+  // 3. Dot-prefixed compound key: provided[locale]['namespace.key'] (shallow or nested path)
   const dotKey = `${namespace}.${key}`;
   if (typeof localeData[dotKey] === "string") {
     return localeData[dotKey];
   }
+  const nestedDot = getNestedValue(localeData, dotKey);
+  if (typeof nestedDot === "string") {
+    return nestedDot;
+  }
 
-  // 4. Flat key: provided[locale][key]
+  // 4. Flat or nested key directly under localeData
   if (typeof localeData[key] === "string") {
     return localeData[key];
+  }
+  const nestedKey = getNestedValue(localeData, key);
+  if (typeof nestedKey === "string") {
+    return nestedKey;
   }
 
   return undefined;
@@ -215,6 +230,25 @@ export async function translateI18n(
 
   const dirFiles = await listFiles(fullLocaleDir);
   const isArb = dirFiles.some((f) => isArbFile(f)) || analysis.framework === "flutter";
+
+  // Load source single-file JSON if applicable to inspect source schema (namespaces vs nested sections)
+  let sourceSingleFileJson: Record<string, unknown> | null = null;
+  if (!isSubdirStructure && !isArb) {
+    const sourceSinglePath = path.join(fullLocaleDir, `${sourceLocale}.json`);
+    if (await fileExists(sourceSinglePath)) {
+      try {
+        sourceSingleFileJson = await readJsonFile<Record<string, unknown>>(sourceSinglePath);
+      } catch {
+        sourceSingleFileJson = null;
+      }
+    }
+  }
+
+  const structureType: I18nStructureType =
+    input.structure ||
+    config?.structure ||
+    analysis.i18n.structureType ||
+    (isSubdirStructure ? "namespaces" : "nested");
 
   // 7. Process each target locale
   for (const targetLocale of targetLocales) {
@@ -387,10 +421,19 @@ export async function translateI18n(
       for (const [namespace, keysMap] of existingSource.byNamespace.entries()) {
         if (filterNamespaces && !filterNamespaces.has(namespace)) continue;
 
-        // In single-file with namespaces: parsed[namespace] is an object
+        // In single-file with namespaces or nested objects: parsed[namespace] is an object
         // If single namespace / flat: parsed itself is keysMap
+        const sourceHasNsObject =
+          sourceSingleFileJson !== null &&
+          typeof sourceSingleFileJson[namespace] === "object" &&
+          sourceSingleFileJson[namespace] !== null &&
+          !Array.isArray(sourceSingleFileJson[namespace]);
+
         const isNamespaced =
+          sourceHasNsObject ||
+          structureType === "namespaces" ||
           existingSource.byNamespace.size > 1 ||
+          namespace !== "common" ||
           Object.keys(parsed).some(
             (k) => typeof parsed[k] === "object" && parsed[k] !== null
           ) ||

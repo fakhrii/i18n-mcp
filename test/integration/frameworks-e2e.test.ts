@@ -519,6 +519,7 @@ export default function HomePage() {
       // Verify page.tsx updated with useTranslations and t(...)
       const updatedPage = await readTextFile(path.join(tempDir, "src", "app", "page.tsx"));
       expect(updatedPage).toContain("import { useTranslations } from \"next-intl\";");
+      expect(updatedPage).not.toContain("react-i18next");
       expect(updatedPage).toContain("const t = useTranslations(");
       expect(updatedPage).toContain("<h1>{t(");
       expect(updatedPage).toContain("<p>{t(");

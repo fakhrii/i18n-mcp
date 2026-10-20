@@ -353,13 +353,35 @@ export function createTranslationProvider(options: {
   } else if (chosenProvider === "gemini") {
     cloudProvider = new GeminiTranslationProvider({ apiKey: options.apiKey, model: options.model });
   } else if (chosenProvider === "auto") {
-    // Auto-detect based on available environment variables or passed apiKey
-    if (process.env.DEEPL_API_KEY || process.env.DEEPL_AUTH_KEY) {
-      cloudProvider = new DeeplTranslationProvider({ apiKey: options.apiKey });
-    } else if (process.env.GEMINI_API_KEY) {
-      cloudProvider = new GeminiTranslationProvider({ apiKey: options.apiKey, model: options.model });
-    } else if (process.env.OPENAI_API_KEY) {
-      cloudProvider = new OpenAiTranslationProvider({ apiKey: options.apiKey, model: options.model });
+    const key = options.apiKey?.trim();
+
+    // 1. Inspect passed apiKey signature if provided
+    if (key) {
+      if (key.startsWith("sk-")) {
+        cloudProvider = new OpenAiTranslationProvider({ apiKey: key, model: options.model });
+      } else if (key.startsWith("AIza")) {
+        cloudProvider = new GeminiTranslationProvider({ apiKey: key, model: options.model });
+      } else if (key.endsWith(":fx") || (key.length === 36 && key.includes("-"))) {
+        cloudProvider = new DeeplTranslationProvider({ apiKey: key });
+      } else if (options.model?.toLowerCase().includes("gpt")) {
+        cloudProvider = new OpenAiTranslationProvider({ apiKey: key, model: options.model });
+      } else if (options.model?.toLowerCase().includes("gemini")) {
+        cloudProvider = new GeminiTranslationProvider({ apiKey: key, model: options.model });
+      } else {
+        // Default to OpenAI when generic API key is supplied
+        cloudProvider = new OpenAiTranslationProvider({ apiKey: key, model: options.model });
+      }
+    }
+
+    // 2. If no cloudProvider matched yet, check environment variables
+    if (!cloudProvider) {
+      if (process.env.DEEPL_API_KEY || process.env.DEEPL_AUTH_KEY) {
+        cloudProvider = new DeeplTranslationProvider({ apiKey: options.apiKey });
+      } else if (process.env.GEMINI_API_KEY) {
+        cloudProvider = new GeminiTranslationProvider({ apiKey: options.apiKey, model: options.model });
+      } else if (process.env.OPENAI_API_KEY) {
+        cloudProvider = new OpenAiTranslationProvider({ apiKey: options.apiKey, model: options.model });
+      }
     }
   }
 

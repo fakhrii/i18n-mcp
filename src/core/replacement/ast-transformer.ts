@@ -521,12 +521,179 @@ export function injectRequiredHooks(
 }
 
 /**
+ * Strips invalid `const` keywords in Dart code when a child or descendant expression
+ * uses runtime `AppLocalizations.of(context)`.
+ * Handles arbitrarily nested widget trees, constructor calls, and collection literals.
+ */
+export function stripInvalidDartConst(content: string): string {
+  if (!content.includes("AppLocalizations.of(context)")) {
+    return content;
+  }
+
+  interface ConstScope {
+    start: number;
+    end: number;
+    depth: number;
+    remove: boolean;
+  }
+
+  const constScopes: ConstScope[] = [];
+  const bracketStack: string[] = [];
+  let i = 0;
+  const len = content.length;
+
+  while (i < len) {
+    // 1. Skip single-line comments
+    if (content[i] === "/" && content[i + 1] === "/") {
+      i += 2;
+      while (i < len && content[i] !== "\n") {
+        i++;
+      }
+      continue;
+    }
+
+    // 2. Skip multi-line comments
+    if (content[i] === "/" && content[i + 1] === "*") {
+      i += 2;
+      while (i < len && !(content[i] === "*" && content[i + 1] === "/")) {
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+
+    // 3. Skip string literals (single, double, triple-quoted, raw)
+    if (
+      content[i] === "'" ||
+      content[i] === '"' ||
+      (content[i] === "r" && (content[i + 1] === "'" || content[i + 1] === '"'))
+    ) {
+      if (content[i] === "r") i++;
+      const quoteChar = content[i]!;
+      const isTriple =
+        content[i + 1] === quoteChar && content[i + 2] === quoteChar;
+      i += isTriple ? 3 : 1;
+
+      while (i < len) {
+        if (content[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (isTriple) {
+          if (
+            content[i] === quoteChar &&
+            content[i + 1] === quoteChar &&
+            content[i + 2] === quoteChar
+          ) {
+            i += 3;
+            break;
+          }
+        } else if (content[i] === quoteChar) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // 4. Check for AppLocalizations.of(context)
+    if (content.startsWith("AppLocalizations.of(context)", i)) {
+      for (const scope of constScopes) {
+        scope.remove = true;
+      }
+      i += "AppLocalizations.of(context)".length;
+      continue;
+    }
+
+    // 5. Check for 'const' keyword
+    if (
+      (i === 0 || /[\s,(:;{\[]/.test(content[i - 1]!)) &&
+      content.startsWith("const", i) &&
+      /[\s<(\[{]/.test(content[i + 5] || "")
+    ) {
+      const constStart = i;
+      let j = i + 5;
+      while (j < len && /\s/.test(content[j]!)) {
+        j++;
+      }
+      const constEnd = j;
+
+      // Look ahead to find opening delimiter: '(', '[', or '{'
+      let lookAhead = j;
+      let foundDelimiter: string | null = null;
+      let genericDepth = 0;
+
+      while (lookAhead < len) {
+        const char = content[lookAhead]!;
+        if (char === "<") {
+          genericDepth++;
+        } else if (char === ">") {
+          genericDepth = Math.max(0, genericDepth - 1);
+        } else if (genericDepth === 0) {
+          if (char === "(" || char === "[" || char === "{") {
+            foundDelimiter = char;
+            break;
+          }
+          if (char === ";" || char === "=" || char === "\n") {
+            break;
+          }
+        }
+        lookAhead++;
+      }
+
+      if (foundDelimiter) {
+        constScopes.push({
+          start: constStart,
+          end: constEnd,
+          depth: bracketStack.length + 1,
+          remove: false,
+        });
+      }
+
+      i = constEnd;
+      continue;
+    }
+
+    // 6. Track brackets: (, [, {
+    const char = content[i]!;
+    if (char === "(" || char === "[" || char === "{") {
+      bracketStack.push(char === "(" ? ")" : char === "[" ? "]" : "}");
+    } else if (char === ")" || char === "]" || char === "}") {
+      if (bracketStack.length > 0 && bracketStack[bracketStack.length - 1] === char) {
+        bracketStack.pop();
+        const currentDepth = bracketStack.length;
+        for (let s = constScopes.length - 1; s >= 0; s--) {
+          if (constScopes[s]!.depth > currentDepth && !constScopes[s]!.remove) {
+            constScopes.splice(s, 1);
+          }
+        }
+      }
+    }
+
+    i++;
+  }
+
+  // Remove marked const keywords from end of file to beginning
+  const toRemove = constScopes.filter((s) => s.remove);
+  toRemove.sort((a, b) => b.start - a.start);
+
+  let result = content;
+  for (const scope of toRemove) {
+    result = result.slice(0, scope.start) + result.slice(scope.end);
+  }
+
+  return result;
+}
+
+/**
  * Transforms a single source file by applying all planned replacements, imports, and hooks.
  */
 export function applySourceChangesToFile(
   filePath: string,
   originalContent: string,
-  sourceChanges: SourceChangePlan[]
+  sourceChanges: SourceChangePlan[],
+  i18nLibrary?: string
 ): SourceTransformResult {
   const warnings: ApplyWarning[] = [];
   const errors: ApplyError[] = [];
@@ -627,11 +794,8 @@ export function applySourceChangesToFile(
   }
 
   if (filePath.endsWith(".dart")) {
-    // Strip invalid const constructors where child expression now uses runtime AppLocalizations.of(context)
-    transformed = transformed.replace(
-      /\bconst\s+([A-Z][a-zA-Z0-9_]*\s*\([^;)]*AppLocalizations\.of\(context\)[^;)]*\))/g,
-      "$1"
-    );
+    // Strip invalid const constructors and collections where child/descendant expression uses runtime AppLocalizations.of(context)
+    transformed = stripInvalidDartConst(transformed);
   }
 
   // 3. Collect required code changes (imports and hooks)
@@ -656,9 +820,33 @@ export function applySourceChangesToFile(
   errors.push(...hookResult.errors);
 
   // 6. Safety net: Ensure i18n integrity
+  let detectedLibrary = i18nLibrary;
+  if (!detectedLibrary) {
+    for (const sc of applicableChanges) {
+      if (sc.requiredCodeChanges) {
+        for (const cc of sc.requiredCodeChanges) {
+          if (
+            cc.module === "next-intl" ||
+            cc.module === "next-i18next" ||
+            cc.module === "react-i18next"
+          ) {
+            detectedLibrary = cc.module;
+            break;
+          }
+        }
+      }
+      if (detectedLibrary) break;
+    }
+  }
+
   const primaryNamespace =
     applicableChanges.find((sc) => sc.namespace)?.namespace || "common";
-  transformed = ensureI18nIntegrity(transformed, filePath, primaryNamespace);
+  transformed = ensureI18nIntegrity(
+    transformed,
+    filePath,
+    primaryNamespace,
+    detectedLibrary
+  );
 
   // 7. Validate resulting syntax using TypeScript parser (for TS/JS files only)
   if (/\.[jt]sx?$/i.test(filePath)) {
@@ -707,7 +895,8 @@ export function applySourceChangesToFile(
 export function ensureI18nIntegrity(
   sourceText: string,
   filePath: string,
-  defaultNamespace: string = "common"
+  defaultNamespace: string = "common",
+  i18nLibrary?: string
 ): string {
   if (!/\.[jt]sx?$/i.test(filePath)) {
     return sourceText;
@@ -743,9 +932,126 @@ export function ensureI18nIntegrity(
   }
   scanCalls(sourceFile);
 
+  // If none of the i18n triggers are called, no integrity adjustments are needed
+  if (!callsT && !callsTrans && !callsI18nT) {
+    return result;
+  }
+
+  // Resolve target library
+  let resolvedLibrary = i18nLibrary;
+  if (!resolvedLibrary) {
+    if (
+      /from\s+['"]next-intl['"]/.test(result) ||
+      /\buseTranslations\b/.test(result)
+    ) {
+      resolvedLibrary = "next-intl";
+    } else if (/from\s+['"]next-i18next['"]/.test(result)) {
+      resolvedLibrary = "next-i18next";
+    } else {
+      resolvedLibrary = "react-i18next";
+    }
+  }
+
   const neededImports: CodeChange[] = [];
 
-  // Check useTranslation import
+  if (resolvedLibrary === "next-intl") {
+    // Check useTranslations import
+    if (
+      callsT &&
+      !/import\s+{[^}]*\buseTranslations\b[^}]*}\s+from\s+['"]next-intl['"]/.test(result)
+    ) {
+      neededImports.push({
+        type: "ADD_IMPORT",
+        value: "useTranslations",
+        module: "next-intl",
+      });
+    }
+
+    if (
+      callsI18nT &&
+      !/import\s+.*i18n.*from\s+['"].*['"]/.test(result)
+    ) {
+      neededImports.push({
+        type: "ADD_IMPORT",
+        value: "i18n",
+        module: "i18next",
+      });
+    }
+
+    if (neededImports.length > 0) {
+      result = injectRequiredImports(result, neededImports);
+    }
+
+    // Ensure every component calling t(...) has t declared
+    if (callsT) {
+      const hookValue =
+        defaultNamespace && defaultNamespace !== "common"
+          ? `const t = useTranslations("${defaultNamespace}")`
+          : `const t = useTranslations()`;
+      const hookResult = injectRequiredHooks(result, filePath, [
+        {
+          type: "ADD_HOOK",
+          value: hookValue,
+        },
+      ]);
+      result = hookResult.updatedText;
+    }
+
+    return result;
+  }
+
+  if (resolvedLibrary === "next-i18next") {
+    if (
+      callsT &&
+      !/import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]next-i18next['"]/.test(result)
+    ) {
+      neededImports.push({
+        type: "ADD_IMPORT",
+        value: "useTranslation",
+        module: "next-i18next",
+      });
+    }
+
+    if (
+      callsTrans &&
+      !/import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]next-i18next['"]/.test(result)
+    ) {
+      neededImports.push({
+        type: "ADD_IMPORT",
+        value: "Trans",
+        module: "next-i18next",
+      });
+    }
+
+    if (
+      callsI18nT &&
+      !/import\s+.*i18n.*from\s+['"].*['"]/.test(result)
+    ) {
+      neededImports.push({
+        type: "ADD_IMPORT",
+        value: "i18n",
+        module: "next-i18next",
+      });
+    }
+
+    if (neededImports.length > 0) {
+      result = injectRequiredImports(result, neededImports);
+    }
+
+    if (callsT) {
+      const hookResult = injectRequiredHooks(result, filePath, [
+        {
+          type: "ADD_HOOK",
+          value: `const { t } = useTranslation("${defaultNamespace}")`,
+        },
+      ]);
+      result = hookResult.updatedText;
+    }
+
+    return result;
+  }
+
+  // Default: react-i18next
   if (
     callsT &&
     !/import\s+{[^}]*\buseTranslation\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(result)
@@ -757,7 +1063,6 @@ export function ensureI18nIntegrity(
     });
   }
 
-  // Check Trans import
   if (
     callsTrans &&
     !/import\s+{[^}]*\bTrans\b[^}]*}\s+from\s+['"]react-i18next['"]/.test(result)
@@ -769,7 +1074,6 @@ export function ensureI18nIntegrity(
     });
   }
 
-  // Check i18n import
   if (
     callsI18nT &&
     !/import\s+.*i18n.*from\s+['"].*['"]/.test(result)
@@ -785,7 +1089,6 @@ export function ensureI18nIntegrity(
     result = injectRequiredImports(result, neededImports);
   }
 
-  // Ensure every component calling t(...) has t declared
   if (callsT) {
     const hookResult = injectRequiredHooks(result, filePath, [
       {

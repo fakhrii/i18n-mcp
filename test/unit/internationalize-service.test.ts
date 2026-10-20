@@ -115,4 +115,31 @@ describe("Internationalize Service Unit Tests", () => {
     expect(secondRun.status).toBe("NO_CHANGES");
     expect(secondRun.scan.userFacing).toBe(0);
   });
+
+  it("succeeds with PENDING_TRANSLATIONS when apply=true and translate=false", async () => {
+    const res = await internationalizeProject({
+      projectPath: sandboxDir,
+      scope: ["src/features/auth"],
+      apply: true,
+      dryRun: false,
+      translate: false,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.status).toBe("PENDING_TRANSLATIONS");
+    expect(res.apply).toBeDefined();
+    expect(res.apply?.sourceChangesApplied).toBe(3);
+    expect(res.translation?.pending).toBeGreaterThanOrEqual(1);
+    expect(res.validation?.valid).toBe(true);
+
+    // Source locale file was updated
+    const enAuthPath = path.join(sandboxDir, "src/locales/en/auth.json");
+    const enAuth = JSON.parse(await fs.readFile(enAuthPath, "utf8"));
+    expect(enAuth.WELCOME_BACK).toBe("Welcome back");
+
+    // Target locale file was not updated
+    const frAuthPath = path.join(sandboxDir, "src/locales/fr/auth.json");
+    const frAuth = JSON.parse(await fs.readFile(frAuthPath, "utf8"));
+    expect(frAuth.WELCOME_BACK).toBeUndefined();
+  });
 });

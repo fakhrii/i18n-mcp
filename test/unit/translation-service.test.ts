@@ -207,5 +207,64 @@ describe("Translation Service & Provider Unit Tests", () => {
         await fs.rm(flutterDir, { recursive: true, force: true });
       }
     });
+
+    it("translates single-file nested JSON without dropping top-level sections", async () => {
+      const nestedDir = await fs.mkdtemp(path.join(os.tmpdir(), "nested-trans-"));
+      try {
+        await fs.writeFile(
+          path.join(nestedDir, "package.json"),
+          JSON.stringify({ name: "nested-app", dependencies: { next: "14.0.0" } }),
+          "utf8"
+        );
+        const localesDir = path.join(nestedDir, "messages");
+        await fs.mkdir(localesDir, { recursive: true });
+
+        const enJson = {
+          onboarding: {
+            title: "Welcome",
+            step1: {
+              description: "Get started now",
+            },
+          },
+        };
+        await fs.writeFile(
+          path.join(localesDir, "en.json"),
+          JSON.stringify(enJson, null, 2),
+          "utf8"
+        );
+
+        const res = await translateI18n({
+          projectPath: nestedDir,
+          sourceLocale: "en",
+          targetLocales: ["fr"],
+          providedTranslations: {
+            fr: {
+              onboarding: {
+                title: "Bienvenue",
+                step1: {
+                  description: "Commencez maintenant",
+                },
+              },
+            },
+          },
+        });
+
+        expect(res.errors).toHaveLength(0);
+        expect(res.filesModified).toContain("messages/fr.json");
+
+        const frContent = await fs.readFile(path.join(localesDir, "fr.json"), "utf8");
+        const parsedFr = JSON.parse(frContent);
+
+        // Section "onboarding" must be preserved!
+        expect(parsedFr.onboarding).toBeDefined();
+        expect(parsedFr.onboarding.title).toBe("Bienvenue");
+        expect(parsedFr.onboarding.step1.description).toBe("Commencez maintenant");
+        // Must NOT be flattened to root or wrapped in "common"
+        expect(parsedFr.title).toBeUndefined();
+        expect(parsedFr.common).toBeUndefined();
+      } finally {
+        await fs.rm(nestedDir, { recursive: true, force: true });
+      }
+    });
   });
 });

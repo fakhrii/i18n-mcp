@@ -9,7 +9,7 @@ const program = new Command();
 program
   .name("i18n-mcp")
   .description("CLI and developer tool for automated internationalization across React Native, React, Next.js, and Flutter")
-  .version("0.1.1");
+  .version("0.1.4");
 
 program
   .command("serve")

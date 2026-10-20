@@ -3,6 +3,12 @@
  * locale structures without corrupting or flattening schemas.
  */
 
+const DANGEROUS_PROPERTIES = new Set(["__proto__", "constructor", "prototype"]);
+
+export function isDangerousProperty(prop: string): boolean {
+  return DANGEROUS_PROPERTIES.has(prop.trim().toLowerCase());
+}
+
 /**
  * Checks if an object has top-level properties whose values are nested objects
  * (e.g. { PISPI: { ... }, common: { ... } } or { ONBOARDING: { ... } }).
@@ -23,12 +29,15 @@ export function findMatchingPropertyKey(
   obj: Record<string, unknown>,
   targetKey: string
 ): string | undefined {
+  if (isDangerousProperty(targetKey)) {
+    return undefined;
+  }
   if (Object.prototype.hasOwnProperty.call(obj, targetKey)) {
     return targetKey;
   }
   const lower = targetKey.toLowerCase();
   for (const k of Object.keys(obj)) {
-    if (k.toLowerCase() === lower) {
+    if (k.toLowerCase() === lower && !isDangerousProperty(k)) {
       return k;
     }
   }
@@ -47,7 +56,7 @@ export function getNestedValue(
   obj: Record<string, unknown> | undefined | null,
   keyPath: string
 ): unknown {
-  if (!obj || typeof obj !== "object") {
+  if (!obj || typeof obj !== "object" || isDangerousProperty(keyPath)) {
     return undefined;
   }
 
@@ -60,11 +69,14 @@ export function getNestedValue(
   // 2. Dot-separated path traversal (case-insensitive)
   if (keyPath.includes(".")) {
     const parts = keyPath.split(".");
+    if (parts.some((p) => isDangerousProperty(p))) {
+      return undefined;
+    }
     let current: any = obj;
     for (const part of parts) {
       if (current && typeof current === "object" && !Array.isArray(current)) {
         const matchedKey = findMatchingPropertyKey(current, part);
-        if (matchedKey !== undefined) {
+        if (matchedKey !== undefined && !isDangerousProperty(matchedKey)) {
           current = current[matchedKey];
         } else {
           return undefined;
@@ -96,6 +108,7 @@ export function hasNestedKey(
  * - Otherwise, creates intermediate nested objects ({ ONBOARDING: { HERO_TITLE: value } })
  *   WITHOUT deleting any existing sibling keys or parent objects.
  * - Preserves existing key casing where matched.
+ * - Guards against prototype pollution (__proto__, constructor, prototype).
  */
 export function setNestedValue(
   obj: Record<string, unknown>,
@@ -103,9 +116,15 @@ export function setNestedValue(
   value: unknown,
   options?: { forceFlat?: boolean }
 ): void {
+  if (!obj || typeof obj !== "object" || isDangerousProperty(keyPath)) {
+    return;
+  }
+
   if (!keyPath.includes(".") || options?.forceFlat) {
     const directKey = findMatchingPropertyKey(obj, keyPath) || keyPath;
-    obj[directKey] = value;
+    if (!isDangerousProperty(directKey)) {
+      obj[directKey] = value;
+    }
     return;
   }
 
@@ -115,18 +134,30 @@ export function setNestedValue(
     flatKey !== undefined &&
     (typeof obj[flatKey] !== "object" || obj[flatKey] === null)
   ) {
-    obj[flatKey] = value;
+    if (!isDangerousProperty(flatKey)) {
+      obj[flatKey] = value;
+    }
     return;
   }
 
   // Otherwise, traverse and create intermediate objects
   const parts = keyPath.split(".");
+  if (parts.some((p) => isDangerousProperty(p))) {
+    return;
+  }
+
   let current: any = obj;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
+    if (isDangerousProperty(part)) {
+      return;
+    }
     const matchedKey = findMatchingPropertyKey(current, part);
     const resolvedKey = matchedKey || part;
+    if (isDangerousProperty(resolvedKey)) {
+      return;
+    }
 
     if (
       current[resolvedKey] === undefined ||
@@ -140,9 +171,14 @@ export function setNestedValue(
   }
 
   const lastPart = parts[parts.length - 1]!;
+  if (isDangerousProperty(lastPart)) {
+    return;
+  }
   const matchedLastKey = findMatchingPropertyKey(current, lastPart);
   const resolvedLastKey = matchedLastKey || lastPart;
-  current[resolvedLastKey] = value;
+  if (!isDangerousProperty(resolvedLastKey)) {
+    current[resolvedLastKey] = value;
+  }
 }
 
 /**
@@ -155,6 +191,7 @@ export function flattenNestedObject(
   const result = new Map<string, string>();
 
   for (const [k, v] of Object.entries(obj)) {
+    if (isDangerousProperty(k)) continue;
     const fullKey = prefix ? `${prefix}.${k}` : k;
     if (typeof v === "string") {
       result.set(fullKey, v);
@@ -179,23 +216,33 @@ export function deleteNestedValue(
   obj: Record<string, unknown> | undefined | null,
   keyPath: string
 ): boolean {
-  if (!obj || typeof obj !== "object") {
+  if (!obj || typeof obj !== "object" || isDangerousProperty(keyPath)) {
     return false;
   }
 
   // 1. Direct property check
   const directKey = findMatchingPropertyKey(obj, keyPath);
   if (directKey !== undefined) {
-    delete obj[directKey];
-    return true;
+    if (!isDangerousProperty(directKey)) {
+      delete obj[directKey];
+      return true;
+    }
+    return false;
   }
 
   // 2. Dot-separated path traversal
   const parts = keyPath.split(".");
+  if (parts.some((p) => isDangerousProperty(p))) {
+    return false;
+  }
+
   let current: any = obj;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
+    if (isDangerousProperty(part)) {
+      return false;
+    }
     const matchedKey = findMatchingPropertyKey(current, part);
     if (!matchedKey || typeof current[matchedKey] !== "object" || current[matchedKey] === null) {
       return false;
@@ -204,8 +251,11 @@ export function deleteNestedValue(
   }
 
   const lastPart = parts[parts.length - 1]!;
+  if (isDangerousProperty(lastPart)) {
+    return false;
+  }
   const matchedLastKey = findMatchingPropertyKey(current, lastPart);
-  if (matchedLastKey !== undefined) {
+  if (matchedLastKey !== undefined && !isDangerousProperty(matchedLastKey)) {
     delete current[matchedLastKey];
     return true;
   }

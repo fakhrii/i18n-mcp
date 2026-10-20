@@ -313,14 +313,27 @@ export async function internationalizeProject(
     } catch (err: unknown) {
       errors.push(`Translation phase failed: ${String(err)}`);
     }
+  } else if (targetLocales.length > 0) {
+    transMeta = {
+      translated: 0,
+      unchanged: 0,
+      pending:
+        (applyResult?.translationEntriesCreated || plan.summary.newKeysCount) *
+        targetLocales.length,
+      review: 0,
+    };
   }
 
   // 7. Validate i18n implementation
   let validationResult: I18nValidationResult;
   try {
+    const localesToValidate = translate
+      ? [sourceLocale, ...targetLocales]
+      : [sourceLocale];
+
     validationResult = await validateI18n({
       projectPath: projectRoot,
-      locales: [sourceLocale, ...targetLocales],
+      locales: localesToValidate,
       namespaces: input.namespaces,
       checkSourceCode: false,
     });
@@ -360,6 +373,8 @@ export async function internationalizeProject(
   if (!validationResult.valid || errors.length > 0) {
     finalStatus = !validationResult.valid ? "FAILED_VALIDATION" : "FAILED";
     finalSuccess = false;
+  } else if (!translate && targetLocales.length > 0) {
+    finalStatus = "PENDING_TRANSLATIONS";
   } else if (translationResult && translationResult.pending > 0) {
     finalStatus = "PENDING_TRANSLATIONS";
   } else if (planReviewCount > 0 || (translationResult && translationResult.review > 0)) {

@@ -5,8 +5,8 @@ import { logger } from "../utils/logger.js";
 
 export function createI18nMcpServer(): McpServer {
   const server = new McpServer({
-    name: "react-native-i18n-mcp",
-    version: "0.1.0",
+    name: "i18n-mcp",
+    version: "0.1.4",
   });
 
   registerAllTools(server);

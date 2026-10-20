@@ -116,7 +116,7 @@ function extractPlaceholders(text: string): { template: string; tokens: Map<stri
 function restorePlaceholders(text: string, tokens: Map<string, string>): string {
   let result = text;
   for (const [key, original] of tokens.entries()) {
-    result = result.replace(new RegExp(key, "g"), original);
+    result = result.replace(new RegExp(key, "g"), () => original);
   }
   return result;
 }
@@ -168,8 +168,10 @@ export class DictionaryTranslationProvider implements ITranslationProvider {
         const suffix = /\w$/.test(phrase) ? "\\b" : "";
         const regex = new RegExp(`${prefix}${escaped}${suffix}`, "gi");
 
-        if (regex.test(workingTemplate)) {
-          workingTemplate = workingTemplate.replace(regex, langDict[phrase]!);
+        const replacement = langDict[phrase]!;
+        const updated = workingTemplate.replace(regex, () => replacement);
+        if (updated !== workingTemplate) {
+          workingTemplate = updated;
           replaced = true;
         }
       }

@@ -1,4 +1,5 @@
 import type { TranslationProviderType } from "./config.js";
+import type { I18nStructureType } from "./project.js";
 
 export interface TranslateI18nInput {
   projectPath?: string;
@@ -9,6 +10,7 @@ export interface TranslateI18nInput {
   providedTranslations?: Record<string, any>;
   provider?: TranslationProviderType;
   apiKey?: string;
+  structure?: I18nStructureType;
 }
 
 export type TranslationItemStatus =
