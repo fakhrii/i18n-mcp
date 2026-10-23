@@ -798,6 +798,15 @@ export function applySourceChangesToFile(
     transformed = stripInvalidDartConst(transformed);
   }
 
+  if (filePath.endsWith(".html")) {
+    return {
+      transformedContent: transformed,
+      changesApplied,
+      warnings,
+      errors,
+    };
+  }
+
   // 3. Collect required code changes (imports and hooks)
   const codeChanges: CodeChange[] = [];
   for (const sc of applicableChanges) {

@@ -1,14 +1,14 @@
 ---
 name: internationalize
 description: >-
-  Internationalize React Native, React (web), Next.js, or Flutter projects, features, screens, or components using the i18n MCP server.
+  Internationalize React Native, React (web), Next.js, Flutter, or Angular projects, features, screens, or components using the i18n MCP server.
   Use when the user invokes /internationalize or asks to extract hardcoded strings, translate text,
   or internationalize a module.
 ---
 
 # Multi-Framework Internationalization Skill (`/internationalize`)
 
-This skill orchestrates the end-to-end internationalization pipeline across **React Native**, **React (web)**, **Next.js**, and **Flutter** projects by delegating directly to the MCP tool `internationalize`.
+This skill orchestrates the end-to-end internationalization pipeline across **React Native**, **React (web)**, **Next.js**, **Flutter**, and **Angular** projects by delegating directly to the MCP tool `internationalize`.
 
 ## Core Principles
 
@@ -26,6 +26,7 @@ This skill orchestrates the end-to-end internationalization pipeline across **Re
 - `/internationalize` — scans the entire project or default src scope.
 - `/internationalize src/features/auth` — scopes to a specific feature directory.
 - `/internationalize src/features/auth/LoginScreen.tsx` — scopes to a single screen or component.
+- `/internationalize src/app/login/login.component.html` — scopes to an Angular component template.
 - `/internationalize lib/screens/login.dart` — scopes to a Flutter Dart screen.
 - `/internationalize src/features/auth src/features/profile` — scopes to multiple paths.
 - `/internationalize src/features/auth --apply` — directly applies changes without waiting for preview confirmation.

@@ -67,6 +67,59 @@ export function extractReferencedKeysFromSource(sourceContent: string): Set<stri
     }
   }
 
+  // 4. Match Angular pipe: {{ 'KEY' | translate }} or 'KEY' | translate
+  const angularPipeRegex = /(?:['"`])([a-zA-Z0-9_.:/-]+)(?:['"`])\s*\|\s*(?:translate|transloco)\b/g;
+  while ((match = angularPipeRegex.exec(sourceContent)) !== null) {
+    const rawKey = match[1];
+    if (rawKey) {
+      referencedKeys.add(rawKey);
+      if (rawKey.includes(":")) {
+        const parts = rawKey.split(":");
+        referencedKeys.add(parts[1]!);
+      }
+      if (rawKey.includes(".")) {
+        const parts = rawKey.split(".");
+        referencedKeys.add(parts[parts.length - 1]!);
+      }
+    }
+  }
+
+  // 5. Match Angular translateService: translate.instant('KEY') or translate.get('KEY')
+  const angularServiceRegex =
+    /\b(?:translate|translateService)\s*\.\s*(?:instant|get|stream)\s*\(\s*(['"`])([a-zA-Z0-9_.:/-]+)\1/g;
+  while ((match = angularServiceRegex.exec(sourceContent)) !== null) {
+    const rawKey = match[2];
+    if (rawKey) {
+      referencedKeys.add(rawKey);
+      if (rawKey.includes(":")) {
+        const parts = rawKey.split(":");
+        referencedKeys.add(parts[1]!);
+      }
+      if (rawKey.includes(".")) {
+        const parts = rawKey.split(".");
+        referencedKeys.add(parts[parts.length - 1]!);
+      }
+    }
+  }
+
+  // 6. Match Angular translate directive: [translate]="'KEY'" or translate="KEY"
+  const angularDirectiveRegex =
+    /\btranslate\s*=\s*['"]([a-zA-Z0-9_.:/-]+)['"]|\[translate\]\s*=\s*["'](?:'|")([a-zA-Z0-9_.:/-]+)(?:'|")["']/g;
+  while ((match = angularDirectiveRegex.exec(sourceContent)) !== null) {
+    const rawKey = match[1] || match[2];
+    if (rawKey) {
+      referencedKeys.add(rawKey);
+      if (rawKey.includes(":")) {
+        const parts = rawKey.split(":");
+        referencedKeys.add(parts[1]!);
+      }
+      if (rawKey.includes(".")) {
+        const parts = rawKey.split(".");
+        referencedKeys.add(parts[parts.length - 1]!);
+      }
+    }
+  }
+
   return referencedKeys;
 }
 
