@@ -61,26 +61,37 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
     framework = "react-native";
   } else if ("next" in allDeps) {
     framework = "nextjs";
+  } else if (
+    "@angular/core" in allDeps ||
+    "@angular/common" in allDeps ||
+    "@angular/cli" in allDeps ||
+    (await fileExists(path.join(projectRoot, "angular.json")))
+  ) {
+    framework = "angular";
   } else if ("react" in allDeps || "react-dom" in allDeps) {
     framework = "react";
   }
 
   // 2. Language detection
   let language: LanguageType = "javascript";
-  const hasTsConfig = await fileExists(path.join(projectRoot, "tsconfig.json"));
-  const hasTsDep = "typescript" in allDeps || "@types/react" in allDeps || "@types/react-native" in allDeps;
-
-  if (hasTsConfig || hasTsDep) {
+  if (framework === "angular") {
     language = "typescript";
   } else {
-    // Check for any .ts or .tsx files
-    const tsFiles = await findFilesByGlob("**/*.{ts,tsx}", projectRoot, [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-    ]);
-    if (tsFiles.length > 0) {
+    const hasTsConfig = await fileExists(path.join(projectRoot, "tsconfig.json"));
+    const hasTsDep = "typescript" in allDeps || "@types/react" in allDeps || "@types/react-native" in allDeps;
+
+    if (hasTsConfig || hasTsDep) {
       language = "typescript";
+    } else {
+      // Check for any .ts or .tsx files
+      const tsFiles = await findFilesByGlob("**/*.{ts,tsx}", projectRoot, [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+      ]);
+      if (tsFiles.length > 0) {
+        language = "typescript";
+      }
     }
   }
 

@@ -33,11 +33,11 @@ export const DEFAULT_EXCLUDES = [
 ];
 
 export const DEFAULT_INCLUDES = [
-  "src/**/*.{ts,tsx,js,jsx}",
-  "app/**/*.{ts,tsx,js,jsx}",
-  "components/**/*.{ts,tsx,js,jsx}",
-  "screens/**/*.{ts,tsx,js,jsx}",
-  "features/**/*.{ts,tsx,js,jsx}",
+  "src/**/*.{ts,tsx,js,jsx,html}",
+  "app/**/*.{ts,tsx,js,jsx,html}",
+  "components/**/*.{ts,tsx,js,jsx,html}",
+  "screens/**/*.{ts,tsx,js,jsx,html}",
+  "features/**/*.{ts,tsx,js,jsx,html}",
   "lib/**/*.{dart,ts,tsx,js,jsx}",
 ];
 
@@ -77,7 +77,7 @@ export async function resolveProjectFiles(
       if (await dirExists(fullPath)) {
         // Directory target
         const relDir = toPosixPath(path.relative(resolvedRoot, fullPath));
-        const pattern = `${relDir}/**/*.{ts,tsx,js,jsx,dart}`;
+        const pattern = `${relDir}/**/*.{ts,tsx,js,jsx,dart,html}`;
         const matched = await fg(pattern, {
           cwd: posixRoot,
           ignore: excludes,
@@ -120,9 +120,9 @@ export async function resolveProjectFiles(
     dot: false,
   });
 
-  // If common folders didn't match anything, fallback to searching all root ts/tsx/js/jsx files
+  // If common folders didn't match anything, fallback to searching all root ts/tsx/js/jsx/dart/html files
   if (matched.length === 0 && includes.length === 0) {
-    matched = await fg("**/*.{ts,tsx,js,jsx,dart}", {
+    matched = await fg("**/*.{ts,tsx,js,jsx,dart,html}", {
       cwd: posixRoot,
       ignore: excludes,
       dot: false,

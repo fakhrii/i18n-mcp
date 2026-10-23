@@ -1,6 +1,6 @@
 # Multi-Framework i18n MCP Server (`i18n-mcp`)
 
-Production-quality Model Context Protocol (MCP) server for automated internationalization across **React Native**, **React (web)**, **Next.js**, and **Flutter** projects.
+Production-quality Model Context Protocol (MCP) server for automated internationalization across **React Native**, **React (web)**, **Next.js**, **Flutter**, and **Angular** projects.
 
 Designed for AI coding agents (Antigravity, Claude Code, Cursor, Gemini CLI, etc.) to inspect projects, detect hardcoded user-facing strings with AST precision, understand existing i18n architectures, resolve ambiguous text candidates collaboratively, generate semantic translation keys, translate them, replace source code safely, and validate results.
 
@@ -14,6 +14,7 @@ Designed for AI coding agents (Antigravity, Claude Code, Cursor, Gemini CLI, etc
 | **React (Web)** | TypeScript, TSX, JS, JSX | `<p>`, `<span>`, `<h1>-<h6>`, `<button>`, `<label>`, `placeholder`, `aria-label`, `window.alert` | `react-i18next`, `i18next` |
 | **Next.js** | TypeScript, TSX, JS, JSX | React text tags, `<Link>`, metadata titles/descriptions, Pages & App Router | `next-intl`, `next-i18next`, `react-i18next` |
 | **Flutter** | Dart | `Text()`, `SelectableText()`, `TextField(decoration:)`, `SnackBar()`, `AppBar(title:)` | `flutter_localizations`, `intl`, ARB |
+| **Angular** | TypeScript, HTML | HTML templates (`.html` and inline), Angular Material (`mat-card-title`, `mat-hint`), `SnackBar.open()`, `title`, `placeholder`, `aria-label` | `@ngx-translate/core`, `@angular/localize`, `transloco` |
 
 ---
 

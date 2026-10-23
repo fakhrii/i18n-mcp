@@ -212,7 +212,11 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
           exprText === "t" ||
           exprText === "i18n.t" ||
           exprText === "translate" ||
-          exprText.endsWith(".t")
+          exprText.endsWith(".t") ||
+          exprText.includes("translate.instant") ||
+          exprText.includes("translate.get") ||
+          exprText.includes("translateService") ||
+          exprText === "$localize"
         ) {
           return true;
         }
@@ -520,7 +524,11 @@ export function scanSourceFileAst(options: AstScanOptions): DetectedString[] {
         callee === "translate" ||
         callee.endsWith(".t") ||
         callee === "useTranslation" ||
-        callee === "require"
+        callee === "require" ||
+        callee.includes("translate.instant") ||
+        callee.includes("translate.get") ||
+        callee.includes("translateService") ||
+        callee === "$localize"
       ) {
         return;
       }

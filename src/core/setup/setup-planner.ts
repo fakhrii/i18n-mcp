@@ -111,6 +111,55 @@ export default getRequestConfig(async () => {
     };
   }
 
+  if (analysis.framework === "angular") {
+    const localeDir = hasSrcDir ? "src/assets/i18n" : "assets/i18n";
+    const configFile = hasSrcDir ? "src/app/i18n.config.ts" : "src/i18n.config.ts";
+    const filesToCreate: I18nSetupFile[] = [
+      {
+        path: configFile,
+        content: `import { HttpClient } from "@angular/common/http";
+import { TranslateLoader, TranslateModuleConfig } from "@ngx-translate/core";
+import { TranslateHttpLoader } from "@ngx-translate/http-loader";
+
+export function httpLoaderFactory(http: HttpClient) {
+  return new TranslateHttpLoader(http, "./assets/i18n/", ".json");
+}
+
+export const provideI18nConfig: TranslateModuleConfig = {
+  defaultLanguage: "${sourceLocale}",
+  loader: {
+    provide: TranslateLoader,
+    useFactory: httpLoaderFactory,
+    deps: [HttpClient],
+  },
+};
+`,
+        type: "CONFIG",
+      },
+    ];
+
+    const allLocales = Array.from(new Set([sourceLocale, ...targetLocales]));
+    for (const loc of allLocales) {
+      filesToCreate.push({
+        path: `${localeDir}/${loc}.json`,
+        content: "{\n}\n",
+        type: "LOCALE_RESOURCE",
+      });
+    }
+
+    return {
+      needed: true,
+      library: "@ngx-translate/core",
+      configFile,
+      localeDirectory: localeDir,
+      filesToCreate,
+      dependenciesToAdd: {
+        "@ngx-translate/core": "^15.0.0",
+        "@ngx-translate/http-loader": "^8.0.0",
+      },
+    };
+  }
+
   // 1. Determine config and locale directories
   const configFilePath = hasSrcDir
     ? isTs

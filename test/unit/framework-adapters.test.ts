@@ -5,6 +5,7 @@ import {
   ReactWebAdapter,
   NextJsAdapter,
   FlutterAdapter,
+  AngularAdapter,
 } from "../../src/integrations/adapters/index.js";
 
 describe("Framework Adapters & Multi-Framework Registry", () => {
@@ -13,6 +14,7 @@ describe("Framework Adapters & Multi-Framework Registry", () => {
     expect(getFrameworkAdapter("react")).toBeInstanceOf(ReactWebAdapter);
     expect(getFrameworkAdapter("nextjs")).toBeInstanceOf(NextJsAdapter);
     expect(getFrameworkAdapter("flutter")).toBeInstanceOf(FlutterAdapter);
+    expect(getFrameworkAdapter("angular")).toBeInstanceOf(AngularAdapter);
     expect(getFrameworkAdapter("unknown")).toBeInstanceOf(ReactNativeAdapter);
   });
 
@@ -91,6 +93,38 @@ describe("Framework Adapters & Multi-Framework Registry", () => {
       const pattern = adapter.getDefaultTranslationPattern();
       expect(pattern.importStatement).toContain("app_localizations.dart");
       expect(pattern.callSyntax).toBe("l10n");
+    });
+  });
+
+  describe("Angular Adapter", () => {
+    const adapter = new AngularAdapter();
+
+    it("identifies Angular and HTML text components", () => {
+      expect(adapter.isKnownTextComponent("h1")).toBe(true);
+      expect(adapter.isKnownTextComponent("p")).toBe(true);
+      expect(adapter.isKnownTextComponent("button")).toBe(true);
+      expect(adapter.isKnownTextComponent("mat-card-title")).toBe(true);
+      expect(adapter.isKnownTextComponent("mat-hint")).toBe(true);
+      expect(adapter.isKnownTextComponent("div")).toBe(false);
+    });
+
+    it("identifies Angular text props and feedback calls", () => {
+      expect(adapter.isKnownTextProp("placeholder")).toBe(true);
+      expect(adapter.isKnownTextProp("title")).toBe(true);
+      expect(adapter.isKnownTextProp("matTooltip")).toBe(true);
+      expect(adapter.isKnownTextProp("aria-label")).toBe(true);
+      expect(adapter.isKnownTextProp("routerLink")).toBe(false);
+
+      expect(adapter.isKnownFeedbackCall("this.snackBar.open")).toBe(true);
+      expect(adapter.isKnownFeedbackCall("alert")).toBe(true);
+      expect(adapter.isKnownFeedbackCall("console.log")).toBe(false);
+    });
+
+    it("provides Angular translation pattern", () => {
+      const pattern = adapter.getDefaultTranslationPattern();
+      expect(pattern.importStatement).toContain("@ngx-translate/core");
+      expect(pattern.hookOrAccessor).toContain("TranslateService");
+      expect(pattern.callSyntax).toBe("this.translate.instant");
     });
   });
 });

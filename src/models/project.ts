@@ -1,4 +1,4 @@
-export type FrameworkType = "react-native" | "react" | "nextjs" | "flutter" | "unknown";
+export type FrameworkType = "react-native" | "react" | "nextjs" | "flutter" | "angular" | "unknown";
 export type LanguageType = "typescript" | "javascript" | "dart";
 export type PackageManagerType = "npm" | "yarn" | "pnpm" | "bun" | "pub" | "unknown";
 export type I18nLibraryType =
@@ -7,6 +7,10 @@ export type I18nLibraryType =
   | "next-intl"
   | "flutter_localizations"
   | "easy_localization"
+  | "@ngx-translate/core"
+  | "ngx-translate"
+  | "@angular/localize"
+  | "transloco"
   | "custom"
   | "none";
 

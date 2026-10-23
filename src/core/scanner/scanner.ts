@@ -7,6 +7,7 @@ import { detectProjectMetadata } from "../discovery/project-detector.js";
 import { detectI18n } from "../discovery/i18n-detector.js";
 import { scanSourceFileAst } from "./ast-scanner.js";
 import { scanDartSourceFile } from "./dart-scanner.js";
+import { scanHtmlTemplateFile } from "./html-scanner.js";
 import { readTextFile, toPosixPath } from "../../utils/file-system.js";
 import { logger } from "../../utils/logger.js";
 
@@ -42,8 +43,19 @@ export async function scanHardcodedTexts(
     if (!content) continue;
 
     const isDart = relFile.endsWith(".dart");
+    const isHtml = relFile.endsWith(".html");
     const detected = isDart
       ? scanDartSourceFile({
+          filePath: toPosixPath(relFile),
+          sourceCode: content,
+          knownNamespaces,
+          config,
+          onlyUserFacing: options?.onlyUserFacing ?? true,
+          minConfidence: options?.minConfidence ?? 0.0,
+          ambiguousOnly: options?.ambiguousOnly ?? false,
+        })
+      : isHtml
+      ? scanHtmlTemplateFile({
           filePath: toPosixPath(relFile),
           sourceCode: content,
           knownNamespaces,

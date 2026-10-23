@@ -10,8 +10,9 @@ export interface FileTranslationContext {
   hasUseTranslationCall?: boolean;
   hasAppLocalizationsImport?: boolean;
   hasL10nAccessor?: boolean;
+  hasTranslateServiceImport?: boolean;
   boundNamespaces: string[];
-  accessPattern: "useTranslation" | "i18n.t" | "custom" | "none";
+  accessPattern: "useTranslation" | "i18n.t" | "translate.instant" | "custom" | "none";
   i18nLibrary?: string;
 }
 
@@ -51,6 +52,10 @@ export function analyzeFileTranslationContext(
     /\bvar\s+l10n\s*=/.test(strippedContent) ||
     /\bl10n\s*=/.test(strippedContent);
 
+  const hasTranslateServiceImport =
+    strippedContent.includes("TranslateService") ||
+    strippedContent.includes("@ngx-translate/core");
+
   const boundNamespaces: string[] = [];
 
   // Match: useTranslation("auth") or useTranslation(['auth', 'common'])
@@ -70,8 +75,16 @@ export function analyzeFileTranslationContext(
     }
   }
 
-  let accessPattern: "useTranslation" | "i18n.t" | "custom" | "none" = "useTranslation";
+  let accessPattern: "useTranslation" | "i18n.t" | "translate.instant" | "custom" | "none" = "useTranslation";
   if (
+    _i18nLibrary === "@ngx-translate/core" ||
+    _i18nLibrary === "ngx-translate" ||
+    projectAccessPattern === "translate:pipe" ||
+    projectAccessPattern === "translate.instant" ||
+    hasTranslateServiceImport
+  ) {
+    accessPattern = "translate.instant";
+  } else if (
     projectAccessPattern === "useTranslation" ||
     projectAccessPattern === "t" ||
     hasUseTranslationImport ||
@@ -92,8 +105,10 @@ export function analyzeFileTranslationContext(
     hasUseTranslationCall,
     hasAppLocalizationsImport,
     hasL10nAccessor,
+    hasTranslateServiceImport,
     boundNamespaces,
     accessPattern,
+    i18nLibrary: _i18nLibrary,
   };
 }
 
@@ -118,6 +133,52 @@ export function buildReplacementExpression(
       return `${accessor}.${key}(${vars.join(", ")})`;
     }
     return `${accessor}.${key}`;
+  }
+
+  // Angular HTML template replacement syntax
+  if (item.file?.endsWith(".html") || fileContext.filePath?.endsWith(".html")) {
+    let keyExpr = key;
+    if (structureType === "nested") {
+      if (namespace && namespace !== "translation" && namespace !== "default") {
+        if (key.toLowerCase().startsWith(`${namespace.toLowerCase()}.`)) {
+          keyExpr = key;
+        } else {
+          keyExpr = `${namespace}.${key}`;
+        }
+      } else {
+        keyExpr = key;
+      }
+    } else if (structureType === "flat") {
+      keyExpr = key;
+    } else {
+      if (namespace && namespace !== "common") {
+        keyExpr = `${namespace}.${key}`;
+      } else {
+        keyExpr = key;
+      }
+    }
+
+    if (item.variables && item.variables.length > 0) {
+      let varsObj: string;
+      if (item.variableExpressions && Object.keys(item.variableExpressions).length > 0) {
+        const parts = Object.entries(item.variableExpressions).map(([k, expr]) =>
+          k === expr ? k : `${k}: ${expr}`
+        );
+        varsObj = `{ ${parts.join(", ")} }`;
+      } else {
+        varsObj = `{ ${item.variables.join(", ")} }`;
+      }
+
+      if (item.type === "JSX_ATTRIBUTE") {
+        return `"{{ '${keyExpr}' | translate: ${varsObj} }}"`;
+      }
+      return `{{ '${keyExpr}' | translate: ${varsObj} }}`;
+    }
+
+    if (item.type === "JSX_ATTRIBUTE") {
+      return `"{{ '${keyExpr}' | translate }}"`;
+    }
+    return `{{ '${keyExpr}' | translate }}`;
   }
 
   let keyExpression = key;
@@ -182,7 +243,9 @@ export function buildReplacementExpression(
 
   // Choose function invocation syntax
   const callExpr =
-    fileContext.accessPattern === "i18n.t"
+    fileContext.accessPattern === "translate.instant"
+      ? `this.translate.instant(${args})`
+      : fileContext.accessPattern === "i18n.t"
       ? `i18n.t(${args})`
       : `t(${args})`;
 
@@ -213,12 +276,31 @@ export function determineRequiredCodeChanges(
   structureType: I18nStructureType = "namespaces"
 ): CodeChange[] {
   const changes: CodeChange[] = [];
+  if (fileContext.filePath?.endsWith(".html")) {
+    return changes;
+  }
+
   if (fileContext.filePath?.endsWith(".dart")) {
     if (!fileContext.hasAppLocalizationsImport) {
       changes.push({
         type: "ADD_IMPORT",
         value: "AppLocalizations",
         module: "package:flutter_gen/gen_l10n/app_localizations.dart",
+      });
+    }
+    return changes;
+  }
+
+  if (
+    fileContext.i18nLibrary === "@ngx-translate/core" ||
+    fileContext.i18nLibrary === "ngx-translate" ||
+    fileContext.accessPattern === "translate.instant"
+  ) {
+    if (!fileContext.hasTranslateServiceImport) {
+      changes.push({
+        type: "ADD_IMPORT",
+        value: "TranslateService",
+        module: "@ngx-translate/core",
       });
     }
     return changes;

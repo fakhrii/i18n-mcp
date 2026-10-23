@@ -24,6 +24,9 @@ const COMMON_LOCALE_DIRS = [
   "messages",
   "lib/l10n",
   "l10n",
+  "src/assets/i18n",
+  "assets/i18n",
+  "public/i18n",
   "src/assets/locales",
   "assets/locales",
   "src/translations",
@@ -43,6 +46,10 @@ const COMMON_CONFIG_FILES = [
   "src/services/i18n.js",
   "src/utils/i18n.ts",
   "src/utils/i18n.js",
+  "src/app/i18n.config.ts",
+  "src/app/i18n.config.js",
+  "src/app/app.config.ts",
+  "src/app/app.module.ts",
   "i18n.ts",
   "i18n.js",
   "l10n.yaml",
@@ -98,6 +105,16 @@ export function parseCodeLevelI18nConfig(content: string): CodeI18nConfig {
     result.library = "react-i18next";
   } else if (content.includes("i18next")) {
     result.library = "i18next";
+  } else if (
+    content.includes("@ngx-translate") ||
+    content.includes("TranslateModule") ||
+    content.includes("TranslateService")
+  ) {
+    result.library = "@ngx-translate/core";
+  } else if (content.includes("@angular/localize") || content.includes("$localize")) {
+    result.library = "@angular/localize";
+  } else if (content.includes("@ngneat/transloco") || content.includes("TranslocoModule")) {
+    result.library = "transloco";
   }
 
   // 2. fallbackLng: 'en' or fallbackLng: ['en', 'fr']
@@ -180,6 +197,12 @@ export async function detectI18n(
     library = "i18next";
   } else if ("flutter_localizations" in allDependencies) {
     library = "flutter_localizations";
+  } else if ("@ngx-translate/core" in allDependencies || "ngx-translate" in allDependencies) {
+    library = "@ngx-translate/core";
+  } else if ("@angular/localize" in allDependencies) {
+    library = "@angular/localize";
+  } else if ("@ngneat/transloco" in allDependencies || "transloco" in allDependencies) {
+    library = "transloco";
   }
 
   // 2. Detect Config File in project
@@ -414,7 +437,7 @@ export async function detectI18n(
   }
 
   // 10. Detect Translation Access Patterns in source code
-  const sourceFiles = await findFilesByGlob("{src,lib}/**/*.{ts,tsx,js,jsx,dart}", projectRoot, [
+  const sourceFiles = await findFilesByGlob("{src,lib,app}/**/*.{ts,tsx,js,jsx,dart,html}", projectRoot, [
     "**/node_modules/**",
     "**/dist/**",
     "**/__tests__/**",
@@ -452,6 +475,15 @@ export async function detectI18n(
     }
     if (content.includes("<Trans") || content.includes("</Trans>")) {
       accessPatterns.add("Trans");
+    }
+    if (content.includes("| translate") || content.includes("[translate]") || content.includes("translate.instant")) {
+      accessPatterns.add("translate:pipe");
+    }
+    if (content.includes("$localize")) {
+      accessPatterns.add("$localize");
+    }
+    if (content.includes("| transloco")) {
+      accessPatterns.add("transloco:pipe");
     }
   }
 

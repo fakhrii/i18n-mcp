@@ -16,7 +16,7 @@ export const analyzeProjectSchema = {
 export function registerAnalyzeProjectTool(server: McpServer): void {
   server.tool(
     "analyze_project",
-    "Analyze a React Native project (as well as React, Next.js, and Flutter) without modifying anything. Returns framework, language, package manager, detected i18n library, configuration, locale directory, source and target locales, existing namespaces, project structure, and configuration warnings.",
+    "Analyze a React Native project (as well as React, Next.js, Flutter, and Angular) without modifying anything. Returns framework, language, package manager, detected i18n library, configuration, locale directory, source and target locales, existing namespaces, project structure, and configuration warnings.",
     analyzeProjectSchema,
     async ({ projectPath }) => {
       logger.info(`Invoking analyze_project tool for path: ${projectPath || "."}`);
