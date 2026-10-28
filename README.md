@@ -115,6 +115,10 @@ Cleans, sorts, and formats translation catalogs (JSON and ARB) alphabetically or
 Audits codebase for Right-to-Left (RTL) and bidirectional layout bugs, detecting physical spacing (`marginLeft`/`marginRight`), alignment (`textAlign: left`), physical Tailwind utility classes (`ml-`, `mr-`, `text-left`), Flutter physical offsets (`EdgeInsets.only(left:)`, `Alignment.centerLeft`), directional icons, and missing RTL root configs, with automated logical property migration (`fix: true`).
 - **Inputs**: `projectPath`, `scope`, `targetLocales` (e.g. `['ar', 'he']`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
 
+### `audit_plurals`
+Audits translation catalogs (JSON and Flutter ARB) against official Unicode CLDR plural and gender rules, detecting missing mandatory categories (e.g., Arabic `zero`/`two`/`few`/`many`, Russian `few`/`many`), missing mandatory `other` fallback branches, and variable mismatches, with automated scaffold fixing (`fix: true`).
+- **Inputs**: `projectPath`, `locales` (e.g. `['ar', 'ru', 'pl']`), `namespaces`, `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
 - **Inputs**:
@@ -240,7 +244,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (54 test files, 382 tests)
+# Run unit and integration tests (55 test files, 394 tests)
 npm test
 
 # Typecheck
@@ -262,6 +266,12 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Audit and scaffold Unicode CLDR plural categories across catalogs
+npx i18n-mcp plurals ./my-project --locales ar ru pl --fix
+
+# Audit RTL layout and auto-fix physical properties to logical
+npx i18n-mcp rtl ./my-project --target-locales ar he --fix
 
 # Translate missing keys with context-aware formality
 npx i18n-mcp translate ./my-project --target-locales fr es --formality formal --provider openai

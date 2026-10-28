@@ -10,6 +10,7 @@ import { registerGenerateI18nTypesTool } from "./generate-i18n-types.js";
 import { registerGeneratePseudolocaleTool } from "./generate-pseudolocale.js";
 import { registerFormatCatalogsTool } from "./format-catalogs.js";
 import { registerAuditRtlTool } from "./audit-rtl.js";
+import { registerAuditPluralsTool } from "./audit-plurals.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -23,6 +24,7 @@ export function registerAllTools(server: McpServer): void {
   registerGeneratePseudolocaleTool(server);
   registerFormatCatalogsTool(server);
   registerAuditRtlTool(server);
+  registerAuditPluralsTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -36,3 +38,4 @@ export * from "./generate-i18n-types.js";
 export * from "./generate-pseudolocale.js";
 export * from "./format-catalogs.js";
 export * from "./audit-rtl.js";
+export * from "./audit-plurals.js";

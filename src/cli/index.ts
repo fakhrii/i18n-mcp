@@ -949,4 +949,82 @@ program
     }
   );
 
+program
+  .command("plurals")
+  .description("Audit translation catalogs against Unicode CLDR plural and gender rules")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--locales <locales...>", "Target locales to audit (e.g. 'ar' 'ru' 'pl')")
+  .option("--namespaces <namespaces...>", "Limit auditing to specific namespaces")
+  .option("--fix", "Automatically scaffold missing required CLDR plural forms", false)
+  .option("--dry-run", "Preview scaffolded fixes without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        locales?: string[];
+        namespaces?: string[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditPlurals } = await import("../core/plural/cldr-linter.js");
+
+        const result = await auditPlurals({
+          projectPath,
+          locales: options.locales,
+          namespaces: options.namespaces,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Unicode CLDR Plural & Gender Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`Catalogs Audited:    ${result.totalCatalogs}`);
+        console.log(`Plurals Audited:     ${result.totalPluralsAudited}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`Missing Categories:  ${result.missingCategoriesCount}`);
+        console.log(`Missing Other:       ${result.missingOtherFallbackCount}`);
+        console.log(`Invalid Categories:  ${result.invalidCategoriesCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Applied:       ${result.fixesApplied || 0}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.severity.toUpperCase()}] ${issue.file} (${issue.format}) -> Key: ${issue.key}${fixable}`
+            );
+            console.log(`    ${issue.message}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Plural audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);
