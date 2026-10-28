@@ -1027,4 +1027,88 @@ program
     }
   );
 
+program
+  .command("formatting")
+  .description("Audit source code for unlocalized number, date, time, percentage, and currency formatting")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit audit to specific relative file/folder paths")
+  .option("--categories <categories...>", "Categories to audit: CURRENCY NUMBER PERCENTAGE DATE TIME")
+  .option("--fix", "Automatically migrate hardcoded formatting to Intl or Flutter formatters", false)
+  .option("--dry-run", "Preview formatting migration diff without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        categories?: any[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditFormatting } = await import("../core/formatting/formatting-auditor.js");
+
+        const result = await auditFormatting({
+          projectPath,
+          scope: options.scope,
+          categories: options.categories,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Number, Date & Currency Formatting Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`Framework:           ${result.framework}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`- Currency:          ${result.currencyIssuesCount}`);
+        console.log(`- Number (.toFixed): ${result.numberIssuesCount}`);
+        console.log(`- Percentage (%):    ${result.percentageIssuesCount}`);
+        console.log(`- Date Formatting:   ${result.dateIssuesCount}`);
+        console.log(`- Time Formatting:   ${result.timeIssuesCount || 0}`);
+        console.log(`Auto-Fixable:        ${result.fixableCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Applied:       ${result.fixesApplied || 0}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.category}] ${issue.file}:${issue.line}:${issue.column}${fixable}`
+            );
+            console.log(`    Expression: ${issue.rawExpression}`);
+            console.log(`    Message:    ${issue.message}`);
+            if (issue.suggestedReplacement) {
+              console.log(`    Fix:        ${issue.suggestedReplacement}`);
+            }
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Formatting audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);

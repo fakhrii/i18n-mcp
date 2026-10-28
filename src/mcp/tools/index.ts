@@ -11,6 +11,7 @@ import { registerGeneratePseudolocaleTool } from "./generate-pseudolocale.js";
 import { registerFormatCatalogsTool } from "./format-catalogs.js";
 import { registerAuditRtlTool } from "./audit-rtl.js";
 import { registerAuditPluralsTool } from "./audit-plurals.js";
+import { registerAuditFormattingTool } from "./audit-formatting.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -25,6 +26,7 @@ export function registerAllTools(server: McpServer): void {
   registerFormatCatalogsTool(server);
   registerAuditRtlTool(server);
   registerAuditPluralsTool(server);
+  registerAuditFormattingTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -39,3 +41,4 @@ export * from "./generate-pseudolocale.js";
 export * from "./format-catalogs.js";
 export * from "./audit-rtl.js";
 export * from "./audit-plurals.js";
+export * from "./audit-formatting.js";

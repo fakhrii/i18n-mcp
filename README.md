@@ -119,6 +119,14 @@ Audits codebase for Right-to-Left (RTL) and bidirectional layout bugs, detecting
 Audits translation catalogs (JSON and Flutter ARB) against official Unicode CLDR plural and gender rules, detecting missing mandatory categories (e.g., Arabic `zero`/`two`/`few`/`many`, Russian `few`/`many`), missing mandatory `other` fallback branches, and variable mismatches, with automated scaffold fixing (`fix: true`).
 - **Inputs**: `projectPath`, `locales` (e.g. `['ar', 'ru', 'pl']`), `namespaces`, `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
 
+### `audit_formatting`
+Audits project source code (React Native, React, Vue, Flutter, Next.js) for unlocalized formatting anti-patterns:
+- **Hardcoded Currency Concatenation**: Flagging expressions like `` `$${price}` ``, `price + " €"`, and Flutter `'\$${item.price}'`, with automated migration to `Intl.NumberFormat` or Flutter `NumberFormat.simpleCurrency`.
+- **Unlocalized Decimals**: Detects `.toFixed()` or `.toStringAsFixed()` where decimal points/commas depend on user locale.
+- **Hardcoded Percentages**: Detects `` `${discount}%` `` and migrates to localized percentage formatting.
+- **Unparameterized Date & Time**: Detects bare `.toLocaleDateString()` and `.toLocaleTimeString()` calls with automated migration to `Intl.DateTimeFormat(undefined, { dateStyle: "medium" })`.
+- **Inputs**: `projectPath`, `scope`, `categories` (`CURRENCY`, `NUMBER`, `PERCENTAGE`, `DATE`, `TIME`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
 - **Inputs**:
@@ -244,7 +252,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (55 test files, 394 tests)
+# Run unit and integration tests (56 test files, 402 tests)
 npm test
 
 # Typecheck
@@ -266,6 +274,9 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Audit and migrate unlocalized currency, number, percentage, and date formatting
+npx i18n-mcp formatting ./my-project --categories CURRENCY NUMBER PERCENTAGE DATE --fix
 
 # Audit and scaffold Unicode CLDR plural categories across catalogs
 npx i18n-mcp plurals ./my-project --locales ar ru pl --fix
