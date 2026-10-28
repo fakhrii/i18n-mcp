@@ -861,4 +861,83 @@ program
     }
   );
 
+program
+  .command("rtl")
+  .alias("audit-rtl")
+  .description("Audit codebase for RTL and bidirectional layout compatibility")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit audit to specific files or directories")
+  .option("--target-locales <locales...>", "Target locales (e.g. 'ar' 'he')")
+  .option("--fix", "Automatically convert physical properties to logical equivalents", false)
+  .option("--dry-run", "Explicitly run fix in preview mode (default when --fix is omitted)", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        targetLocales?: string[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditRtlLayout } = await import("../core/rtl/rtl-auditor.js");
+
+        const result = await auditRtlLayout({
+          projectPath,
+          scope: options.scope,
+          targetLocales: options.targetLocales,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- RTL & Bidirectional Layout Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`RTL Targeted:        ${result.isRtlTargeted ? `YES [${result.rtlLocalesDetected.join(", ")}]` : "NO (General readiness audit)"}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`Auto-Fixable:        ${result.fixableCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Mode:          ${options.dryRun ? "Dry-run (Simulated)" : "Applied to disk"}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected RTL Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.severity.toUpperCase()}] ${issue.file}:${issue.line}:${issue.column} (${issue.category})${fixable}`
+            );
+            console.log(`    ${issue.message}`);
+            if (issue.suggestedReplacement) {
+              console.log(`    Suggested: ${issue.suggestedReplacement}`);
+            }
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n----------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("RTL audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);

@@ -104,6 +104,10 @@ Generates pseudo-localized catalogs (`qps-ploc`, `en-XA`, `qps-plocm` bidi) from
 Cleans, sorts, and formats translation catalogs (JSON and ARB) alphabetically or aligned with source locale key ordering, eliminating merge conflicts and inconsistent indentation.
 - **Inputs**: `projectPath`, `locales`, `namespaces`, `sortOrder` (`"alphabetical"` | `"align-with-source"`), `indent` (default: `2`), `dryRun`.
 
+### `audit_rtl`
+Audits codebase for Right-to-Left (RTL) and bidirectional layout bugs, detecting physical spacing (`marginLeft`/`marginRight`), alignment (`textAlign: left`), physical Tailwind utility classes (`ml-`, `mr-`, `text-left`), Flutter physical offsets (`EdgeInsets.only(left:)`, `Alignment.centerLeft`), directional icons, and missing RTL root configs, with automated logical property migration (`fix: true`).
+- **Inputs**: `projectPath`, `scope`, `targetLocales` (e.g. `['ar', 'he']`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
 - **Inputs**:
