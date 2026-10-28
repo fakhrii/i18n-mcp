@@ -127,6 +127,18 @@ Audits project source code (React Native, React, Vue, Flutter, Next.js) for unlo
 - **Unparameterized Date & Time**: Detects bare `.toLocaleDateString()` and `.toLocaleTimeString()` calls with automated migration to `Intl.DateTimeFormat(undefined, { dateStyle: "medium" })`.
 - **Inputs**: `projectPath`, `scope`, `categories` (`CURRENCY`, `NUMBER`, `PERCENTAGE`, `DATE`, `TIME`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
 
+### `export_translations`
+Exports translation catalogs (JSON or Flutter ARB) into standard XLIFF (1.2 / 2.0) or TMX 1.4 exchange files for professional translation agencies and Translation Management Systems (Crowdin, Lokalise, Phrase, Smartling, Trados).
+- **Inputs**: `projectPath`, `format` (`"xliff-1.2"` | `"xliff-2.0"` | `"tmx-1.4"`), `sourceLocale`, `targetLocales`, `namespaces`, `outputPath`, `includeNotes` (boolean, default `true`).
+
+### `import_translations`
+Imports translated strings from standard XLIFF (1.2 / 2.0) or TMX 1.4 exchange files back into project translation catalogs (JSON or Flutter ARB), with unified diff support and collision safety.
+- **Inputs**: `projectPath`, `filePath`, `content`, `format`, `targetLocales`, `overwrite` (boolean, default `true`), `dryRun` (boolean, default `false`).
+
+### `deduplicate_i18n`
+Audits catalogs for exact duplicate keys, fuzzy near-duplicates, and cross-namespace redundancy using normalized Levenshtein similarity, with optional automated key consolidation and source code call-site updates.
+- **Inputs**: `projectPath`, `sourceLocale`, `similarityThreshold` (number 0.5-1.0, default `0.85`), `exactOnly` (boolean), `crossNamespaceOnly` (boolean), `targetNamespace` (default `"common"`), `consolidate` (boolean, default `false`), `dryRun` (boolean, default `true`), `scope`.
+
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
 - **Inputs**:
@@ -252,7 +264,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (56 test files, 402 tests)
+# Run unit and integration tests (58 test files, 417 tests)
 npm test
 
 # Typecheck
@@ -274,6 +286,15 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Export catalogs to standard XLIFF (1.2 / 2.0) or TMX for translation agencies
+npx i18n-mcp export ./my-project --format xliff-1.2 --target-locales fr es de --out ./exports
+
+# Import translated XLIFF or TMX files back into catalogs
+npx i18n-mcp import ./my-project --file ./exports/en_fr.xlf
+
+# Audit catalogs for exact and fuzzy duplicate keys and consolidate redundancies
+npx i18n-mcp dedupe ./my-project --threshold 0.85 --consolidate
 
 # Audit and migrate unlocalized currency, number, percentage, and date formatting
 npx i18n-mcp formatting ./my-project --categories CURRENCY NUMBER PERCENTAGE DATE --fix

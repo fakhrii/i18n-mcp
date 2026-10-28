@@ -1111,4 +1111,234 @@ program
     }
   );
 
+program
+  .command("export")
+  .description("Export translation catalogs to standard XLIFF (1.2 / 2.0) or TMX 1.4 files")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--format <format>", "Exchange format: 'xliff-1.2', 'xliff-2.0', or 'tmx-1.4'", "xliff-1.2")
+  .option("--source-locale <locale>", "Source locale code (e.g. 'en')")
+  .option("--target-locales <locales...>", "Target locales to export (e.g. 'fr' 'de' 'es')")
+  .option("--namespaces <namespaces...>", "Limit export to specific namespaces")
+  .option("--out <dirOrFile>", "File or directory path to output exported exchange files")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        format: any;
+        sourceLocale?: string;
+        targetLocales?: string[];
+        namespaces?: string[];
+        out?: string;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { exportTranslations } = await import("../core/exchange/translation-exporter.js");
+
+        const result = await exportTranslations({
+          projectPath,
+          format: options.format,
+          sourceLocale: options.sourceLocale,
+          targetLocales: options.targetLocales,
+          namespaces: options.namespaces,
+          outputPath: options.out,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(`\n--- Translation Export (${result.format.toUpperCase()}) ---\n`);
+        console.log(`Source Locale:       ${result.sourceLocale}`);
+        console.log(`Target Locales:      ${result.targetLocales.join(", ")}`);
+        console.log(`Total Units:         ${result.totalUnitsExported}`);
+        if (result.filesExported.length > 0) {
+          console.log(`Files Generated:     ${result.filesExported.length}`);
+          for (const f of result.filesExported) {
+            console.log(`  - ${f}`);
+          }
+        }
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Export failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("import")
+  .description("Import XLIFF or TMX translations back into project catalogs")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .requiredOption("--file <filePath>", "Path to XLIFF or TMX file to import")
+  .option("--format <format>", "Exchange format: 'xliff-1.2', 'xliff-2.0', or 'tmx-1.4'")
+  .option("--target-locales <locales...>", "Target locales to import into")
+  .option("--no-overwrite", "Do not overwrite existing translations in catalogs")
+  .option("--dry-run", "Preview imported translations without modifying catalogs", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        file: string;
+        format?: any;
+        targetLocales?: string[];
+        overwrite: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { importTranslations } = await import("../core/exchange/translation-importer.js");
+
+        const result = await importTranslations({
+          projectPath,
+          filePath: options.file,
+          format: options.format,
+          targetLocales: options.targetLocales,
+          overwrite: options.overwrite,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(`\n--- Translation Import (${result.format.toUpperCase()}) ---\n`);
+        console.log(`Target Locale:       ${result.targetLocale || "detected"}`);
+        console.log(`Units Processed:     ${result.unitsProcessed}`);
+        console.log(`Units Imported:      ${result.unitsImported}`);
+        console.log(`Units Skipped:       ${result.unitsSkipped}`);
+        console.log(`Mode:                ${result.dryRun ? "DRY-RUN (Simulated)" : "APPLIED TO DISK"}`);
+        if (result.filesModified.length > 0) {
+          console.log(`Files Modified:      ${result.filesModified.length}`);
+          for (const f of result.filesModified) {
+            console.log(`  - ${f}`);
+          }
+        }
+        if (result.diff) {
+          console.log("\nUnified Diff:\n" + result.diff);
+        }
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Import failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("dedupe")
+  .description("Audit catalogs for exact duplicate keys, fuzzy near-duplicates, and cross-namespace redundancy")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--threshold <number>", "Similarity threshold (0.5 - 1.0)", "0.85")
+  .option("--exact-only", "Only detect exact duplicate text", false)
+  .option("--cross-namespace-only", "Only detect duplicates across multiple namespaces", false)
+  .option("--target-namespace <namespace>", "Target namespace for consolidated keys", "common")
+  .option("--consolidate", "Automatically consolidate duplicate keys into shared namespace", false)
+  .option("--dry-run", "Preview consolidation diff without modifying files", false)
+  .option("--scope <scope...>", "Scope files/folders to update code references")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        threshold: string;
+        exactOnly: boolean;
+        crossNamespaceOnly: boolean;
+        targetNamespace: string;
+        consolidate: boolean;
+        dryRun: boolean;
+        scope?: string[];
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditDuplicates } = await import(
+          "../core/deduplication/deduplication-engine.js"
+        );
+
+        const result = await auditDuplicates({
+          projectPath,
+          similarityThreshold: parseFloat(options.threshold),
+          exactOnly: options.exactOnly,
+          crossNamespaceOnly: options.crossNamespaceOnly,
+          targetNamespace: options.targetNamespace,
+          consolidate: options.consolidate,
+          dryRun: options.dryRun || !options.consolidate,
+          scope: options.scope,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        const totalDuplicates =
+          result.exactDuplicatesCount +
+          result.fuzzyDuplicatesCount +
+          result.crossNamespaceDuplicatesCount;
+
+        console.log("\n--- Translation Deduplication & Similarity Audit ---\n");
+        console.log(
+          `Status:                 ${totalDuplicates === 0 ? "OPTIMIZED (No Duplicates)" : "REDUNDANCY DETECTED"}`
+        );
+        console.log(`Source Locale:          ${result.sourceLocale}`);
+        console.log(`Total Keys Scanned:     ${result.totalKeysScanned}`);
+        console.log(`Exact Duplicates:       ${result.exactDuplicatesCount}`);
+        console.log(`Cross-Namespace:        ${result.crossNamespaceDuplicatesCount}`);
+        console.log(`Fuzzy Near-Duplicates:  ${result.fuzzyDuplicatesCount}`);
+        console.log(`Duplicate Clusters:     ${result.clusters.length}`);
+
+        if (options.consolidate) {
+          console.log(`Keys Consolidated:      ${result.keysConsolidated || 0}`);
+          console.log(`Files Affected:         ${result.filesModified?.length || 0}`);
+        }
+
+        if (result.clusters.length > 0) {
+          console.log("\nDuplicate Clusters:");
+          for (const c of result.clusters) {
+            console.log(
+              `  "${c.value}" (${c.totalOccurrences}x) -> Canonical: ${c.canonicalNamespace}.${c.canonicalKey}`
+            );
+            console.log(`    Keys: ${c.keys.map((k) => `${k.namespace}.${k.key}`).join(", ")}`);
+          }
+        }
+
+        if (result.matches.some((m) => m.matchType === "FUZZY")) {
+          console.log("\nFuzzy Near-Duplicates:");
+          for (const m of result.matches.filter((m) => m.matchType === "FUZZY")) {
+            console.log(
+              `  [${Math.round(m.similarity * 100)}% Match] ${m.namespaceA}.${m.keyA} ("${m.valueA}") <-> ${m.namespaceB}.${m.keyB} ("${m.valueB}")`
+            );
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:\n" + result.diff);
+        }
+
+        console.log("\n----------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Deduplication audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);

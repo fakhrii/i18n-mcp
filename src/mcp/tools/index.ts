@@ -12,6 +12,9 @@ import { registerFormatCatalogsTool } from "./format-catalogs.js";
 import { registerAuditRtlTool } from "./audit-rtl.js";
 import { registerAuditPluralsTool } from "./audit-plurals.js";
 import { registerAuditFormattingTool } from "./audit-formatting.js";
+import { registerExportTranslationsTool } from "./export-translations.js";
+import { registerImportTranslationsTool } from "./import-translations.js";
+import { registerDeduplicateI18nTool } from "./deduplicate-i18n.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -27,6 +30,9 @@ export function registerAllTools(server: McpServer): void {
   registerAuditRtlTool(server);
   registerAuditPluralsTool(server);
   registerAuditFormattingTool(server);
+  registerExportTranslationsTool(server);
+  registerImportTranslationsTool(server);
+  registerDeduplicateI18nTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -42,3 +48,6 @@ export * from "./format-catalogs.js";
 export * from "./audit-rtl.js";
 export * from "./audit-plurals.js";
 export * from "./audit-formatting.js";
+export * from "./export-translations.js";
+export * from "./import-translations.js";
+export * from "./deduplicate-i18n.js";
