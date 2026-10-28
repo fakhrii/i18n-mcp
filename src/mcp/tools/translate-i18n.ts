@@ -42,6 +42,12 @@ export const translateI18nSchema = {
     .string()
     .optional()
     .describe("Optional API key for the chosen cloud translation provider. If omitted, checks environment variables."),
+  glossary: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Optional brand glossary configuration with 'neverTranslate' brand names list and 'terms' dictionary (e.g. { neverTranslate: ['Antigravity'], terms: { Cart: 'Panier' } })."
+    ),
 };
 
 export function registerTranslateI18nTool(server: McpServer): void {
@@ -58,6 +64,7 @@ export function registerTranslateI18nTool(server: McpServer): void {
       providedTranslations,
       provider,
       apiKey,
+      glossary,
     }) => {
       logger.info(
         `Invoking translate_i18n (dryRun=${dryRun ?? false}, projectPath=${projectPath}, provider=${provider || "auto"})`
@@ -72,6 +79,7 @@ export function registerTranslateI18nTool(server: McpServer): void {
           providedTranslations,
           provider,
           apiKey,
+          glossary,
         });
 
         const summaryText = [

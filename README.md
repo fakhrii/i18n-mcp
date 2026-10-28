@@ -15,6 +15,7 @@ Designed for AI coding agents (Antigravity, Claude Code, Cursor, Gemini CLI, etc
 | **Next.js** | TypeScript, TSX, JS, JSX | React text tags, `<Link>`, metadata titles/descriptions, Pages & App Router | `next-intl`, `next-i18next`, `react-i18next` |
 | **Flutter** | Dart | `Text()`, `SelectableText()`, `TextField(decoration:)`, `SnackBar()`, `AppBar(title:)` | `flutter_localizations`, `intl`, ARB |
 | **Angular** | TypeScript, HTML | HTML templates (`.html` and inline), Angular Material (`mat-card-title`, `mat-hint`), `SnackBar.open()`, `title`, `placeholder`, `aria-label` | `@ngx-translate/core`, `@angular/localize`, `transloco` |
+| **Vue / Nuxt** | TypeScript, JavaScript, Vue SFC | `<template>` text sinks, `router-link`, `nuxt-link`, `el-button`, `v-btn`, `title`, `placeholder`, `aria-label`, `toast` | `vue-i18n`, `@nuxtjs/i18n` |
 
 ---
 
@@ -94,6 +95,14 @@ Validates i18n implementation for missing translations, interpolation variable m
 ### `generate_i18n_types`
 Generates compile-time TypeScript definitions (`resources.d.ts`) with module augmentation for i18next / react-i18next / next-intl from source locale catalogs, ensuring strict autocomplete and compile-time key safety.
 - **Inputs**: `projectPath`, `outputPath` (default: `src/@types/resources.d.ts`), `writeToDisk` (boolean, default: `true`).
+
+### `generate_pseudolocale`
+Generates pseudo-localized catalogs (`qps-ploc`, `en-XA`, `qps-plocm` bidi) from source locale files for L10n stress-testing. Tests font glyph support, text expansion (+35%), UI layout clipping, and identifies hardcoded unextracted strings while safely preserving variables and HTML tags.
+- **Inputs**: `projectPath`, `sourceLocale`, `targetLocale` (default: `"qps-ploc"`), `strategy` (`"accented"` | `"bidi"` | `"expansion"` | `"all"`), `expansionRatio` (default: `0.35`), `delimiter` (`"brackets"` | `"exclamation"` | `"none"`), `namespaces`, `dryRun`.
+
+### `format_catalogs`
+Cleans, sorts, and formats translation catalogs (JSON and ARB) alphabetically or aligned with source locale key ordering, eliminating merge conflicts and inconsistent indentation.
+- **Inputs**: `projectPath`, `locales`, `namespaces`, `sortOrder` (`"alphabetical"` | `"align-with-source"`), `indent` (default: `2`), `dryRun`.
 
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.

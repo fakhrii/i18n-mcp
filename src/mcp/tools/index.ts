@@ -7,6 +7,8 @@ import { registerTranslateI18nTool } from "./translate-i18n.js";
 import { registerValidateI18nTool } from "./validate-i18n.js";
 import { registerInternationalizeTool } from "./internationalize.js";
 import { registerGenerateI18nTypesTool } from "./generate-i18n-types.js";
+import { registerGeneratePseudolocaleTool } from "./generate-pseudolocale.js";
+import { registerFormatCatalogsTool } from "./format-catalogs.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -17,6 +19,8 @@ export function registerAllTools(server: McpServer): void {
   registerValidateI18nTool(server);
   registerInternationalizeTool(server);
   registerGenerateI18nTypesTool(server);
+  registerGeneratePseudolocaleTool(server);
+  registerFormatCatalogsTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -27,3 +31,5 @@ export * from "./translate-i18n.js";
 export * from "./validate-i18n.js";
 export * from "./internationalize.js";
 export * from "./generate-i18n-types.js";
+export * from "./generate-pseudolocale.js";
+export * from "./format-catalogs.js";

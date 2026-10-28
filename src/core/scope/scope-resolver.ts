@@ -33,12 +33,13 @@ export const DEFAULT_EXCLUDES = [
 ];
 
 export const DEFAULT_INCLUDES = [
-  "src/**/*.{ts,tsx,js,jsx,html}",
-  "app/**/*.{ts,tsx,js,jsx,html}",
-  "components/**/*.{ts,tsx,js,jsx,html}",
-  "screens/**/*.{ts,tsx,js,jsx,html}",
-  "features/**/*.{ts,tsx,js,jsx,html}",
-  "lib/**/*.{dart,ts,tsx,js,jsx}",
+  "src/**/*.{ts,tsx,js,jsx,html,vue}",
+  "app/**/*.{ts,tsx,js,jsx,html,vue}",
+  "components/**/*.{ts,tsx,js,jsx,html,vue}",
+  "screens/**/*.{ts,tsx,js,jsx,html,vue}",
+  "features/**/*.{ts,tsx,js,jsx,html,vue}",
+  "pages/**/*.{ts,tsx,js,jsx,html,vue}",
+  "lib/**/*.{dart,ts,tsx,js,jsx,vue}",
 ];
 
 export async function resolveProjectFiles(

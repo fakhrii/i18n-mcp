@@ -30,6 +30,13 @@ export function isArbFile(filePath: string): boolean {
 }
 
 /**
+ * Checks whether a key is an ARB metadata key (e.g. '@greeting', but not global '@@locale').
+ */
+export function isArbMetadataKey(key: string): boolean {
+  return key.startsWith("@") && !key.startsWith("@@");
+}
+
+/**
  * Parses an ARB JSON string into a structured ArbFile.
  */
 export function parseArb(content: string): ArbFile {

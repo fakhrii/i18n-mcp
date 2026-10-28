@@ -4,7 +4,7 @@ export interface TranslationRequest {
   targetLocale: string;
   namespace?: string;
   key?: string;
-  glossary?: Record<string, string>;
+  glossary?: any;
 }
 
 export interface TranslationResponse {

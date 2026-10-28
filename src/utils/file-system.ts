@@ -76,3 +76,12 @@ export async function writeTextFile(filePath: string, content: string): Promise<
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(filePath, content, "utf-8");
 }
+
+export async function writeJsonFile(
+  filePath: string,
+  data: unknown,
+  options?: { spaces?: number }
+): Promise<void> {
+  const content = JSON.stringify(data, null, options?.spaces ?? 2) + "\n";
+  await writeTextFile(filePath, content);
+}

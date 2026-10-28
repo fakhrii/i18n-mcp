@@ -8,6 +8,7 @@ import type {
 } from "../../models/translation.js";
 import type { ITranslationProvider } from "./translation-provider.js";
 import { createTranslationProvider } from "./cloud-providers.js";
+import { GlossaryTranslationProvider, type BrandGlossaryConfig } from "./glossary-helper.js";
 import { analyzeProject } from "../discovery/project-analyzer.js";
 import { loadProjectConfig } from "../../config/config-loader.js";
 import { loadExistingTranslations } from "../planning/existing-key-resolver.js";
@@ -196,16 +197,20 @@ export async function translateI18n(
 
   // 3. Load Project Config & Glossary
   const config = await loadProjectConfig(projectRoot);
-  const glossary = config?.glossary;
+  const glossary = input.glossary || config?.glossary;
 
   // 4. Initialize Provider (SmartTranslationProvider with optional cloud & non-blocking fallback)
-  const provider =
+  const rawProvider =
     options?.provider ||
     createTranslationProvider({
       provider: input.provider || config?.translation?.provider,
       apiKey: input.apiKey || config?.translation?.apiKey,
       model: config?.translation?.model,
     });
+
+  const provider = glossary
+    ? new GlossaryTranslationProvider(rawProvider, glossary as BrandGlossaryConfig)
+    : rawProvider;
 
   // 5. Check Directory Layout (subdirs vs single-file)
   const sourceSubdir = path.join(fullLocaleDir, sourceLocale);

@@ -709,4 +709,156 @@ program
     }
   );
 
+program
+  .command("pseudo")
+  .description("Generate pseudo-localized catalogs for UI layout and font stress testing")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--source-locale <locale>", "Source locale to read from (e.g. 'en')")
+  .option("--target-locale <locale>", "Target pseudo-locale (e.g. 'qps-ploc', 'en-XA', 'qps-plocm')", "qps-ploc")
+  .option("--strategy <strategy>", "Strategy: 'accented', 'bidi', 'expansion', or 'all'", "all")
+  .option("--expansion <number>", "Length expansion ratio (e.g. 0.35)", "0.35")
+  .option("--delimiter <type>", "Delimiter: 'exclamation' ([!! ... !!]), 'brackets' ([...]), or 'none'", "exclamation")
+  .option("--namespaces <namespaces...>", "Limit to specific namespaces")
+  .option("--dry-run", "Preview changes without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        sourceLocale?: string;
+        targetLocale: string;
+        strategy: "accented" | "bidi" | "expansion" | "all";
+        expansion: string;
+        delimiter: "brackets" | "exclamation" | "none";
+        namespaces?: string[];
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { generatePseudolocale } = await import(
+          "../core/pseudolocale/pseudolocalizer.js"
+        );
+        const expansionRatio = parseFloat(options.expansion) || 0.35;
+
+        const result = await generatePseudolocale({
+          projectPath,
+          sourceLocale: options.sourceLocale,
+          targetLocale: options.targetLocale,
+          strategy: options.strategy,
+          expansionRatio,
+          delimiter: options.delimiter,
+          namespaces: options.namespaces,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Pseudo-Localization Generation ---\n");
+        console.log(`Source Locale:     ${result.sourceLocale}`);
+        console.log(`Target Locale:     ${result.targetLocale}`);
+        console.log(`Mode:              ${result.dryRun ? "Dry-run (Simulated)" : "Written to disk"}`);
+        console.log(`Keys Transformed:  ${result.keysTransformed}`);
+        console.log(`Files Modified:    ${result.filesModified.length}`);
+
+        if (result.filesModified.length > 0) {
+          console.log(`\nModified Catalogs:`);
+          for (const f of result.filesModified) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log(`\nUnified Diff:`);
+          console.log(result.diff);
+        }
+
+        console.log("\n--------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Pseudo-localization failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("format")
+  .alias("sort")
+  .description("Clean, sort, and format translation catalogs (JSON and ARB)")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--locales <locales...>", "Locales to format")
+  .option("--namespaces <namespaces...>", "Namespaces to format")
+  .option("--align-with-source", "Align target locale key order to match source locale", false)
+  .option("--indent <number>", "Indentation space count", "2")
+  .option("--dry-run", "Preview formatting diff without writing to disk", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        locales?: string[];
+        namespaces?: string[];
+        alignWithSource: boolean;
+        indent: string;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { formatCatalogs } = await import(
+          "../core/format/catalog-formatter.js"
+        );
+        const indentSpaces = parseInt(options.indent, 10) || 2;
+
+        const result = await formatCatalogs({
+          projectPath,
+          locales: options.locales,
+          namespaces: options.namespaces,
+          alignWithSource: options.alignWithSource,
+          indent: indentSpaces,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Catalog Formatting & Sorting ---\n");
+        console.log(`Mode:              ${result.dryRun ? "Dry-run (Simulated)" : "Applied to disk"}`);
+        console.log(`Files Formatted:   ${result.filesFormatted.length}`);
+        console.log(`Files Up-to-Date:  ${result.filesSkipped.length}`);
+        console.log(`Keys Processed:    ${result.totalKeysSorted}`);
+
+        if (result.filesFormatted.length > 0) {
+          console.log(`\nFormatted Files:`);
+          for (const f of result.filesFormatted) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log(`\nUnified Diff:`);
+          console.log(result.diff);
+        }
+
+        console.log("\n------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Catalog formatting failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 program.parse(process.argv);

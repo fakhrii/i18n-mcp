@@ -203,6 +203,10 @@ export async function detectI18n(
     library = "@angular/localize";
   } else if ("@ngneat/transloco" in allDependencies || "transloco" in allDependencies) {
     library = "transloco";
+  } else if ("vue-i18n" in allDependencies) {
+    library = "vue-i18n";
+  } else if ("@nuxtjs/i18n" in allDependencies) {
+    library = "@nuxtjs/i18n";
   }
 
   // 2. Detect Config File in project

@@ -1,4 +1,4 @@
-import type { TranslationProviderType } from "./config.js";
+import type { BrandGlossaryConfig, TranslationProviderType } from "./config.js";
 import type { I18nStructureType } from "./project.js";
 
 export interface TranslateI18nInput {
@@ -11,6 +11,7 @@ export interface TranslateI18nInput {
   provider?: TranslationProviderType;
   apiKey?: string;
   structure?: I18nStructureType;
+  glossary?: BrandGlossaryConfig | Record<string, any>;
 }
 
 export type TranslationItemStatus =
