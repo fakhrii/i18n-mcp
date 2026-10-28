@@ -18,3 +18,14 @@ export {
   createTranslationProvider,
   type CloudProviderOptions,
 } from "./cloud-providers.js";
+
+export {
+  inferRoleFromKey,
+  buildContextPrompt,
+  type TranslationContext,
+  type FormalityType,
+} from "./context-helper.js";
+
+export {
+  GlossaryTranslationProvider,
+} from "./glossary-helper.js";

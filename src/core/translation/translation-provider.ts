@@ -1,3 +1,5 @@
+import type { TranslationContext } from "./context-helper.js";
+
 export interface TranslationRequest {
   text: string;
   sourceLocale: string;
@@ -5,6 +7,7 @@ export interface TranslationRequest {
   namespace?: string;
   key?: string;
   glossary?: any;
+  context?: TranslationContext;
 }
 
 export interface TranslationResponse {

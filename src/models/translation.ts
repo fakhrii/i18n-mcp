@@ -1,5 +1,9 @@
 import type { BrandGlossaryConfig, TranslationProviderType } from "./config.js";
 import type { I18nStructureType } from "./project.js";
+import type {
+  FormalityType,
+  TranslationContext,
+} from "../core/translation/context-helper.js";
 
 export interface TranslateI18nInput {
   projectPath?: string;
@@ -12,6 +16,8 @@ export interface TranslateI18nInput {
   apiKey?: string;
   structure?: I18nStructureType;
   glossary?: BrandGlossaryConfig | Record<string, any>;
+  formality?: FormalityType;
+  context?: TranslationContext;
 }
 
 export type TranslationItemStatus =

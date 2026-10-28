@@ -9,6 +9,7 @@ import type {
 import type { ITranslationProvider } from "./translation-provider.js";
 import { createTranslationProvider } from "./cloud-providers.js";
 import { GlossaryTranslationProvider, type BrandGlossaryConfig } from "./glossary-helper.js";
+import { inferRoleFromKey, type TranslationContext } from "./context-helper.js";
 import { analyzeProject } from "../discovery/project-analyzer.js";
 import { loadProjectConfig } from "../../config/config-loader.js";
 import { loadExistingTranslations } from "../planning/existing-key-resolver.js";
@@ -255,6 +256,25 @@ export async function translateI18n(
     analysis.i18n.structureType ||
     (isSubdirStructure ? "namespaces" : "nested");
 
+  let sourceArb: ArbFile | null = null;
+  if (isArb) {
+    const sourceCand = dirFiles.find(
+      (f) =>
+        isArbFile(f) &&
+        (f.includes(`_${sourceLocale}.arb`) || f === `${sourceLocale}.arb`)
+    );
+    if (sourceCand) {
+      try {
+        const content = await readTextFile(path.join(fullLocaleDir, sourceCand));
+        if (content) {
+          sourceArb = parseArb(content);
+        }
+      } catch {
+        sourceArb = null;
+      }
+    }
+  }
+
   // 7. Process each target locale
   for (const targetLocale of targetLocales) {
     if (isArb) {
@@ -267,15 +287,15 @@ export async function translateI18n(
       if (cand) {
         targetArbName = cand;
       } else {
-        const sourceArb = dirFiles.find(
+        const sourceArbCand = dirFiles.find(
           (f) =>
             isArbFile(f) &&
             (f.includes(`_${sourceLocale}.arb`) || f === `${sourceLocale}.arb`)
         );
-        if (sourceArb) {
-          if (sourceArb.startsWith("intl_")) {
+        if (sourceArbCand) {
+          if (sourceArbCand.startsWith("intl_")) {
             targetArbName = `intl_${targetLocale}.arb`;
-          } else if (!sourceArb.includes("_")) {
+          } else if (!sourceArbCand.includes("_")) {
             targetArbName = `${targetLocale}.arb`;
           }
         }
@@ -343,6 +363,14 @@ export async function translateI18n(
             continue;
           }
 
+          const arbMeta = sourceArb?.keyMetadata.get(key) || arb.keyMetadata.get(key);
+          const reqContext: TranslationContext = {
+            ...input.context,
+            role: input.context?.role || inferRoleFromKey(key),
+            description: input.context?.description || arbMeta?.description,
+            formality: input.formality || input.context?.formality,
+          };
+
           // Translate missing key
           const transResp = await provider.translate({
             text: sourceText,
@@ -351,6 +379,7 @@ export async function translateI18n(
             namespace,
             key,
             glossary,
+            context: reqContext,
           });
 
           let status: TranslationItemStatus = "TRANSLATED";
@@ -503,6 +532,12 @@ export async function translateI18n(
             continue;
           }
 
+          const reqContext: TranslationContext = {
+            ...input.context,
+            role: input.context?.role || inferRoleFromKey(key),
+            formality: input.formality || input.context?.formality,
+          };
+
           // Translate missing key
           const transResp = await provider.translate({
             text: sourceText,
@@ -511,6 +546,7 @@ export async function translateI18n(
             namespace,
             key,
             glossary,
+            context: reqContext,
           });
 
           let status: TranslationItemStatus = "TRANSLATED";
@@ -625,6 +661,12 @@ export async function translateI18n(
           continue;
         }
 
+        const reqContext: TranslationContext = {
+          ...input.context,
+          role: input.context?.role || inferRoleFromKey(key),
+          formality: input.formality || input.context?.formality,
+        };
+
         // Translate missing key
         const transResp = await provider.translate({
           text: sourceText,
@@ -633,6 +675,7 @@ export async function translateI18n(
           namespace,
           key,
           glossary,
+          context: reqContext,
         });
 
         let status: TranslationItemStatus = "TRANSLATED";

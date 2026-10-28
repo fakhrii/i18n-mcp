@@ -374,6 +374,9 @@ program
   .option("--source-locale <locale>", "Source locale (e.g. 'en')")
   .option("--target-locales <locales...>", "Target locales to translate to (e.g. 'fr' 'es')")
   .option("--namespaces <namespaces...>", "Limit translation to specific namespaces")
+  .option("--provider <provider>", "Translation provider ('auto', 'deepl', 'openai', 'gemini', 'dictionary')")
+  .option("--api-key <key>", "API key for cloud translation provider")
+  .option("--formality <formality>", "Grammatical formality ('formal', 'informal', 'neutral')")
   .option("--dry-run", "Simulate translation without modifying files", false)
   .option("--json", "Output results strictly as JSON", false)
   .action(
@@ -383,6 +386,9 @@ program
         sourceLocale?: string;
         targetLocales?: string[];
         namespaces?: string[];
+        provider?: any;
+        apiKey?: string;
+        formality?: any;
         dryRun: boolean;
         json: boolean;
       }
@@ -397,6 +403,9 @@ program
           sourceLocale: options.sourceLocale,
           targetLocales: options.targetLocales,
           namespaces: options.namespaces,
+          provider: options.provider,
+          apiKey: options.apiKey,
+          formality: options.formality,
           dryRun: options.dryRun,
         });
 

@@ -78,15 +78,22 @@ Safely and atomically applies an approved i18n migration plan to the project (Re
 - **Returns**: Applied changes summary, modified files list, and diff preview.
 
 ### `translate_i18n`
-Translates missing keys across target locale files (JSON or Flutter ARB) using pluggable cloud translation providers (`deepl`, `openai`, `gemini`), built-in dictionaries, custom glossaries, or AI agent translations without overwriting existing translations.
+Translates missing keys across target locale files (JSON or Flutter ARB) using pluggable cloud translation providers (`deepl`, `openai`, `gemini`), built-in dictionaries, custom glossaries, or AI agent translations with **Context-Aware Prompting** without overwriting existing translations.
 - **Inputs**:
   - `projectPath`: Project root directory.
   - `sourceLocale`, `targetLocales`: Locales to translate.
   - `namespaces`: Target namespaces to translate.
   - `provider` (`"auto"` | `"deepl"` | `"openai"` | `"gemini"` | `"dictionary"`, optional, default `"auto"`): Cloud translation provider. **Completely optional and non-blocking**; seamlessly falls back to offline dictionaries if unconfigured, offline, or timed out.
   - `apiKey` (string, optional): Cloud translation API key (or set `DEEPL_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in environment).
+  - `formality` (`"formal"` | `"informal"` | `"neutral"`, optional): Desired tone / grammatical formality (e.g. German "Sie" vs "du", French "vous" vs "tu", Spanish "usted" vs "tú").
+  - `context` (object, optional): Explicit contextual clues including `role` ("BUTTON", "TITLE", "PLACEHOLDER"), `componentName`, `elementTag`, `propName`, `filePath`, `description`, `maxLength`, and `surroundingText`.
+  - `glossary` (object, optional): Brand glossary containing `neverTranslate` brand terms and `terms` dictionary mappings.
   - `dryRun`: Preview translation changes without writing to disk.
   - `providedTranslations` (optional map of `{ [locale]: { [key]: translation } }`).
+- **Context-Aware Intelligence**:
+  - Automatically infers UI role classifications from key naming conventions (e.g. `*_BUTTON`, `*_TITLE`, `*_PLACEHOLDER`, `*_ERROR`, `*_TOOLTIP`, `*_NAV`).
+  - Automatically extracts Flutter ARB `@key.description` translator notes to guide LLM disambiguation and parts of speech.
+  - Injects structured context clues into OpenAI system prompts, Gemini instructions, and DeepL API context & formality parameters.
 
 ### `validate_i18n`
 Validates i18n implementation for missing translations, interpolation variable mismatches, orphan keys, unused dead keys, and malformed files across JSON and ARB catalogs.
@@ -233,7 +240,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (44 test files, 295 tests)
+# Run unit and integration tests (54 test files, 382 tests)
 npm test
 
 # Typecheck
@@ -255,6 +262,9 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Translate missing keys with context-aware formality
+npx i18n-mcp translate ./my-project --target-locales fr es --formality formal --provider openai
 
 # Generate TypeScript type definitions (resources.d.ts)
 npx i18n-mcp types ./my-project
