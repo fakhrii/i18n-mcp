@@ -9,6 +9,9 @@ import {
   toPosixPath,
 } from "../../utils/file-system.js";
 import { isArbFile, parseArb } from "../locale/arb-handler.js";
+import { isXCStringsFile, parseXCStrings } from "../locale/xcstrings-handler.js";
+import { isAppleStringsFile, parseAppleStrings } from "../locale/apple-strings-handler.js";
+import { parseAndroidStrings } from "../locale/android-strings-handler.js";
 
 export interface ExistingTranslationItem {
   namespace: string;
@@ -216,6 +219,108 @@ export async function loadExistingTranslations(
           }
         } catch {
           // ignore malformed arb
+        }
+      }
+    }
+  }
+
+  // Check for Apple .xcstrings files in localeDirectory (e.g. Localizable.xcstrings)
+  const xcstringsFiles = dirFiles.filter((f) => isXCStringsFile(f));
+  for (const xcf of xcstringsFiles) {
+    const fullXcfPath = path.join(fullLocaleDir, xcf);
+    const xcfContent = await readTextFile(fullXcfPath);
+    if (xcfContent) {
+      try {
+        const catalog = parseXCStrings(xcfContent);
+        const ns = "common";
+        const nsMap = byNamespace.get(ns) || new Map<string, string>();
+        byNamespace.set(ns, nsMap);
+
+        const targetLang = sourceLocale || catalog.sourceLanguage || "en";
+        for (const [key, entry] of Object.entries(catalog.strings)) {
+          const val =
+            entry.localizations?.[targetLang]?.stringUnit?.value ||
+            entry.localizations?.[targetLang.toLowerCase()]?.stringUnit?.value;
+          if (val) {
+            nsMap.set(key, val);
+            const item: ExistingTranslationItem = {
+              namespace: ns,
+              key,
+              value: val,
+              normalizedValue: normalizeText(val),
+              sourceFile: toPosixPath(path.relative(projectRoot, fullXcfPath)),
+            };
+            items.push(item);
+            commonItems.push(item);
+          }
+        }
+      } catch {
+        // ignore malformed xcstrings
+      }
+    }
+  }
+
+  // Check for Apple .strings files
+  const appleStringsFiles = dirFiles.filter((f) => isAppleStringsFile(f));
+  for (const sf of appleStringsFiles) {
+    const fullSfPath = path.join(fullLocaleDir, sf);
+    const sfContent = await readTextFile(fullSfPath);
+    if (sfContent) {
+      try {
+        const entries = parseAppleStrings(sfContent);
+        const ns = path.basename(sf, ".strings") || "common";
+        const nsMap = byNamespace.get(ns) || new Map<string, string>();
+        byNamespace.set(ns, nsMap);
+
+        for (const entry of entries) {
+          nsMap.set(entry.key, entry.value);
+          const item: ExistingTranslationItem = {
+            namespace: ns,
+            key: entry.key,
+            value: entry.value,
+            normalizedValue: normalizeText(entry.value),
+            sourceFile: toPosixPath(path.relative(projectRoot, fullSfPath)),
+          };
+          items.push(item);
+          if (ns === "common" || ns === "Localizable") {
+            commonItems.push(item);
+          }
+        }
+      } catch {
+        // ignore malformed .strings
+      }
+    }
+  }
+
+  // Check for Android strings.xml (e.g. res/values/strings.xml or values/strings.xml)
+  const androidXmlCandidates = [
+    path.join(fullLocaleDir, "strings.xml"),
+    path.join(fullLocaleDir, "values", "strings.xml"),
+  ];
+  for (const xmlPath of androidXmlCandidates) {
+    if (await fileExists(xmlPath)) {
+      const xmlContent = await readTextFile(xmlPath);
+      if (xmlContent) {
+        try {
+          const androidCatalog = parseAndroidStrings(xmlContent);
+          const ns = "common";
+          const nsMap = byNamespace.get(ns) || new Map<string, string>();
+          byNamespace.set(ns, nsMap);
+
+          for (const entry of androidCatalog.strings.values()) {
+            nsMap.set(entry.name, entry.value);
+            const item: ExistingTranslationItem = {
+              namespace: ns,
+              key: entry.name,
+              value: entry.value,
+              normalizedValue: normalizeText(entry.value),
+              sourceFile: toPosixPath(path.relative(projectRoot, xmlPath)),
+            };
+            items.push(item);
+            commonItems.push(item);
+          }
+        } catch {
+          // ignore malformed android xml
         }
       }
     }

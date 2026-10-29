@@ -26,8 +26,40 @@ import {
   serializeArb,
   type ArbFile,
 } from "../locale/arb-handler.js";
+import {
+  isXCStringsFile,
+  parseXCStrings,
+  serializeXCStrings,
+  setXCStringPlural,
+  type XCStringCatalog,
+} from "../locale/xcstrings-handler.js";
+import {
+  isAndroidStringsFile,
+  parseAndroidStrings,
+  serializeAndroidStrings,
+  type AndroidCatalog,
+} from "../locale/android-strings-handler.js";
+import { discoverNativeMobileCatalogs } from "../locale/native-mobile.js";
 import { generateUnifiedDiff } from "../replacement/diff-generator.js";
 import { logger } from "../../utils/logger.js";
+
+/**
+ * Extracts locale code from an Android resource path (e.g. values-ar/strings.xml -> 'ar').
+ */
+function extractAndroidLocale(filePath: string, defaultLocale = "en"): string {
+  const norm = filePath.replace(/\\/g, "/");
+  const m = norm.match(/(?:^|\/)values-([a-zA-Z]{2,3})(?:-r([a-zA-Z]{2}))?(?:\/|$)/);
+  if (m) {
+    const lang = m[1]!;
+    const region = m[2];
+    return region ? `${lang}-${region}` : lang;
+  }
+  const bMatch = norm.match(/(?:^|\/)values-b\+([a-zA-Z0-9+]+)(?:\/|$)/);
+  if (bMatch && bMatch[1]) {
+    return bMatch[1].replace(/\+/g, "-");
+  }
+  return defaultLocale;
+}
 
 /**
  * Detects indentation style used in a JSON string.
@@ -113,35 +145,6 @@ export async function auditPlurals(
     };
   }
 
-  const localeDir = analysis.i18n.localeDirectory;
-  if (!localeDir) {
-    return {
-      totalCatalogs: 0,
-      totalPluralsAudited: 0,
-      totalIssues: 0,
-      missingCategoriesCount: 0,
-      missingOtherFallbackCount: 0,
-      invalidCategoriesCount: 0,
-      issues: [],
-      filesAffected: [],
-    };
-  }
-
-  const fullLocaleDir = path.join(projectRoot, localeDir);
-  if (!(await dirExists(fullLocaleDir))) {
-    return {
-      totalCatalogs: 0,
-      totalPluralsAudited: 0,
-      totalIssues: 0,
-      missingCategoriesCount: 0,
-      missingOtherFallbackCount: 0,
-      invalidCategoriesCount: 0,
-      issues: [],
-      filesAffected: [],
-    };
-  }
-
-  const allFiles = await listFiles(fullLocaleDir);
   const targetLocalesFilter = options.locales && options.locales.length > 0
     ? new Set(options.locales.map((l) => l.toLowerCase()))
     : null;
@@ -155,52 +158,121 @@ export async function auditPlurals(
     absPath: string;
     locale: string;
     namespace?: string;
-    isArb: boolean;
+    format: "arb" | "json" | "xcstrings" | "android";
   }
 
   const targets: CatalogTarget[] = [];
+  const registeredPaths = new Set<string>();
 
-  for (const f of allFiles) {
-    const ext = path.extname(f).toLowerCase();
-    const isArb = ext === ".arb";
-    const isJson = ext === ".json";
-    if (!isArb && !isJson) continue;
+  const localeDir = analysis.i18n.localeDirectory;
+  if (localeDir) {
+    const fullLocaleDir = path.join(projectRoot, localeDir);
+    if (await dirExists(fullLocaleDir)) {
+      const allFiles = await listFiles(fullLocaleDir);
+      for (const f of allFiles) {
+        const ext = path.extname(f).toLowerCase();
+        const isArb = ext === ".arb";
+        const isJson = ext === ".json";
+        const isXCStrings = isXCStringsFile(f);
+        const isAndroid = isAndroidStringsFile(f);
+        if (!isArb && !isJson && !isXCStrings && !isAndroid) continue;
 
-    const relPath = toPosixPath(path.join(localeDir, f));
-    const absPath = path.join(projectRoot, relPath);
+        const relPath = toPosixPath(path.join(localeDir, f));
+        const absPath = path.join(projectRoot, relPath);
 
-    if (isArb) {
-      let locale = "en";
-      const m = f.match(/^(?:app_|intl_)?([a-zA-Z0-9_-]+)\.arb$/);
-      if (m && m[1]) locale = m[1];
+        if (isXCStrings) {
+          registeredPaths.add(relPath);
+          targets.push({ relPath, absPath, locale: "*", format: "xcstrings" });
+        } else if (isAndroid) {
+          const locale = extractAndroidLocale(relPath, analysis.i18n.sourceLocale || "en");
+          if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+            continue;
+          }
+          registeredPaths.add(relPath);
+          targets.push({ relPath, absPath, locale, format: "android" });
+        } else if (isArb) {
+          let locale = "en";
+          const m = f.match(/^(?:app_|intl_)?([a-zA-Z0-9_-]+)\.arb$/);
+          if (m && m[1]) locale = m[1];
 
-      if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
-        continue;
-      }
-      targets.push({ relPath, absPath, locale, isArb: true });
-    } else {
-      // JSON
-      const parts = toPosixPath(f).split("/");
-      if (parts.length === 1) {
-        // locales/en.json
-        const locale = path.basename(f, ".json");
-        if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
-          continue;
+          if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+            continue;
+          }
+          registeredPaths.add(relPath);
+          targets.push({ relPath, absPath, locale, format: "arb" });
+        } else {
+          // JSON
+          const parts = toPosixPath(f).split("/");
+          if (parts.length === 1) {
+            // locales/en.json
+            const locale = path.basename(f, ".json");
+            if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+              continue;
+            }
+            registeredPaths.add(relPath);
+            targets.push({ relPath, absPath, locale, format: "json" });
+          } else if (parts.length === 2) {
+            // locales/en/common.json
+            const locale = parts[0]!;
+            const ns = path.basename(parts[1]!, ".json");
+            if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+              continue;
+            }
+            if (targetNamespacesFilter && !targetNamespacesFilter.has(ns.toLowerCase())) {
+              continue;
+            }
+            registeredPaths.add(relPath);
+            targets.push({ relPath, absPath, locale, namespace: ns, format: "json" });
+          }
         }
-        targets.push({ relPath, absPath, locale, isArb: false });
-      } else if (parts.length === 2) {
-        // locales/en/common.json
-        const locale = parts[0]!;
-        const ns = path.basename(parts[1]!, ".json");
-        if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
-          continue;
-        }
-        if (targetNamespacesFilter && !targetNamespacesFilter.has(ns.toLowerCase())) {
-          continue;
-        }
-        targets.push({ relPath, absPath, locale, namespace: ns, isArb: false });
       }
     }
+  }
+
+  // Also discover native mobile catalogs across project
+  try {
+    const nativeDiscovery = await discoverNativeMobileCatalogs(projectRoot);
+    for (const xcf of nativeDiscovery.xcstringsFiles) {
+      if (!registeredPaths.has(xcf)) {
+        registeredPaths.add(xcf);
+        targets.push({
+          relPath: xcf,
+          absPath: path.join(projectRoot, xcf),
+          locale: "*",
+          format: "xcstrings",
+        });
+      }
+    }
+    for (const af of nativeDiscovery.androidStringsFiles) {
+      if (!registeredPaths.has(af)) {
+        const locale = extractAndroidLocale(af, analysis.i18n.sourceLocale || "en");
+        if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+          continue;
+        }
+        registeredPaths.add(af);
+        targets.push({
+          relPath: af,
+          absPath: path.join(projectRoot, af),
+          locale,
+          format: "android",
+        });
+      }
+    }
+  } catch {
+    // ignore discovery errors
+  }
+
+  if (targets.length === 0) {
+    return {
+      totalCatalogs: 0,
+      totalPluralsAudited: 0,
+      totalIssues: 0,
+      missingCategoriesCount: 0,
+      missingOtherFallbackCount: 0,
+      invalidCategoriesCount: 0,
+      issues: [],
+      filesAffected: [],
+    };
   }
 
   const issues: PluralIssue[] = [];
@@ -216,7 +288,7 @@ export async function auditPlurals(
     const content = (await readTextFile(target.absPath)) || "";
     let fileHasFixes = false;
 
-    if (target.isArb) {
+    if (target.format === "arb") {
       let arb: ArbFile;
       try {
         arb = parseArb(content);
@@ -344,6 +416,211 @@ export async function auditPlurals(
       if (fileHasFixes) {
         const indent = detectIndentation(content);
         const serialized = serializeArb(arb, indent);
+        const diff = generateUnifiedDiff(target.relPath, content, serialized);
+        if (diff) diffParts.push(diff);
+        filesModified.push(target.relPath);
+
+        if (!dryRun) {
+          await fs.writeFile(target.absPath, serialized, "utf8");
+        }
+      }
+    } else if (target.format === "xcstrings") {
+      let catalog: XCStringCatalog;
+      try {
+        catalog = parseXCStrings(content);
+      } catch {
+        continue;
+      }
+
+      for (const [key, entry] of Object.entries(catalog.strings || {})) {
+        if (!entry.localizations) continue;
+
+        for (const [locale, loc] of Object.entries(entry.localizations)) {
+          if (targetLocalesFilter && !targetLocalesFilter.has(locale.toLowerCase())) {
+            continue;
+          }
+          if (!loc.variations?.plural) continue;
+
+          totalPluralsAudited++;
+          const actualCategories = Object.keys(loc.variations.plural);
+          const requiredCategories = getRequiredPluralCategories(locale);
+
+          // 1. Mandatory 'other' fallback
+          if (!actualCategories.includes("other")) {
+            missingOtherFallbackCount++;
+            issues.push({
+              id: `${target.relPath}:${key}:${locale}:missing-other`,
+              file: target.relPath,
+              key,
+              locale,
+              format: "XCSTRINGS_PLURAL",
+              issueType: "MISSING_OTHER_FALLBACK",
+              severity: "error",
+              expectedCategories: requiredCategories,
+              actualCategories,
+              missingCategories: ["other"],
+              message: `Missing mandatory 'other' fallback variation in Apple String Catalog for key '${key}' in locale '${locale}'.`,
+              autoFixable: true,
+            });
+          }
+
+          // 2. Missing required CLDR categories
+          const missingRequired = requiredCategories.filter((cat) => !actualCategories.includes(cat));
+          if (missingRequired.length > 0) {
+            missingCategoriesCount += missingRequired.length;
+            issues.push({
+              id: `${target.relPath}:${key}:${locale}:missing-cldr`,
+              file: target.relPath,
+              key,
+              locale,
+              format: "XCSTRINGS_PLURAL",
+              issueType: "MISSING_REQUIRED_PLURAL",
+              severity: "warning",
+              expectedCategories: requiredCategories,
+              actualCategories,
+              missingCategories: missingRequired,
+              message: `Locale '${locale}' requires CLDR plural variations [${requiredCategories.join(", ")}], but Apple String Catalog key '${key}' is missing [${missingRequired.join(", ")}].`,
+              autoFixable: true,
+            });
+
+            if (fix) {
+              const templateVal =
+                loc.variations.plural["other"]?.stringUnit?.value ||
+                Object.values(loc.variations.plural)[0]?.stringUnit?.value ||
+                key;
+              for (const missingCat of missingRequired) {
+                setXCStringPlural(catalog, key, locale, missingCat, templateVal);
+                fileHasFixes = true;
+                fixesApplied++;
+              }
+            }
+          }
+
+          // 3. Invalid categories
+          const invalidCategories = actualCategories.filter(
+            (cat) => !ALL_CLDR_CATEGORIES.includes(cat as CldrPluralCategory)
+          );
+          if (invalidCategories.length > 0) {
+            invalidCategoriesCount += invalidCategories.length;
+            issues.push({
+              id: `${target.relPath}:${key}:${locale}:invalid-category`,
+              file: target.relPath,
+              key,
+              locale,
+              format: "XCSTRINGS_PLURAL",
+              issueType: "INVALID_PLURAL_CATEGORY",
+              severity: "warning",
+              expectedCategories: requiredCategories,
+              actualCategories,
+              missingCategories: [],
+              message: `Invalid plural category selectors [${invalidCategories.join(", ")}] found in Apple String Catalog key '${key}' for locale '${locale}'.`,
+              autoFixable: false,
+            });
+          }
+        }
+      }
+
+      if (fileHasFixes) {
+        const indent = detectIndentation(content);
+        const serialized = serializeXCStrings(catalog, indent);
+        const diff = generateUnifiedDiff(target.relPath, content, serialized);
+        if (diff) diffParts.push(diff);
+        filesModified.push(target.relPath);
+
+        if (!dryRun) {
+          await fs.writeFile(target.absPath, serialized, "utf8");
+        }
+      }
+    } else if (target.format === "android") {
+      let androidCatalog: AndroidCatalog;
+      try {
+        androidCatalog = parseAndroidStrings(content);
+      } catch {
+        continue;
+      }
+
+      const requiredCategories = getRequiredPluralCategories(target.locale);
+
+      for (const [name, pluralEntry] of androidCatalog.plurals.entries()) {
+        totalPluralsAudited++;
+        const actualCategories = Object.keys(pluralEntry.items);
+
+        // 1. Mandatory 'other' fallback
+        if (!actualCategories.includes("other")) {
+          missingOtherFallbackCount++;
+          issues.push({
+            id: `${target.relPath}:${name}:missing-other`,
+            file: target.relPath,
+            key: name,
+            locale: target.locale,
+            format: "ANDROID_PLURALS",
+            issueType: "MISSING_OTHER_FALLBACK",
+            severity: "error",
+            expectedCategories: requiredCategories,
+            actualCategories,
+            missingCategories: ["other"],
+            message: `Missing mandatory 'other' quantity in Android <plurals name="${name}"> for locale '${target.locale}'. Android runtime will throw Resources$NotFoundException without 'other'.`,
+            autoFixable: true,
+          });
+        }
+
+        // 2. Missing required CLDR categories
+        const missingRequired = requiredCategories.filter((cat) => !actualCategories.includes(cat));
+        if (missingRequired.length > 0) {
+          missingCategoriesCount += missingRequired.length;
+          issues.push({
+            id: `${target.relPath}:${name}:missing-cldr`,
+            file: target.relPath,
+            key: name,
+            locale: target.locale,
+            format: "ANDROID_PLURALS",
+            issueType: "MISSING_REQUIRED_PLURAL",
+            severity: "warning",
+            expectedCategories: requiredCategories,
+            actualCategories,
+            missingCategories: missingRequired,
+            message: `Locale '${target.locale}' requires CLDR plural quantities [${requiredCategories.join(", ")}], but Android <plurals name="${name}"> is missing [${missingRequired.join(", ")}].`,
+            autoFixable: true,
+          });
+
+          if (fix) {
+            const templateVal =
+              pluralEntry.items["other"] ||
+              Object.values(pluralEntry.items)[0] ||
+              `%d ${name}`;
+            for (const missingCat of missingRequired) {
+              pluralEntry.items[missingCat] = templateVal;
+              fileHasFixes = true;
+              fixesApplied++;
+            }
+          }
+        }
+
+        // 3. Invalid categories
+        const invalidCategories = actualCategories.filter(
+          (cat) => !ALL_CLDR_CATEGORIES.includes(cat as CldrPluralCategory)
+        );
+        if (invalidCategories.length > 0) {
+          invalidCategoriesCount += invalidCategories.length;
+          issues.push({
+            id: `${target.relPath}:${name}:invalid-quantity`,
+            file: target.relPath,
+            key: name,
+            locale: target.locale,
+            format: "ANDROID_PLURALS",
+            issueType: "INVALID_PLURAL_CATEGORY",
+            severity: "warning",
+            expectedCategories: requiredCategories,
+            actualCategories,
+            missingCategories: [],
+            message: `Invalid plural quantity [${invalidCategories.join(", ")}] found in Android <plurals name="${name}">.`,
+            autoFixable: false,
+          });
+        }
+      }
+
+      if (fileHasFixes) {
+        const serialized = serializeAndroidStrings(androidCatalog);
         const diff = generateUnifiedDiff(target.relPath, content, serialized);
         if (diff) diffParts.push(diff);
         filesModified.push(target.relPath);

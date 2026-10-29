@@ -6,7 +6,12 @@ export type CldrPluralCategory =
   | "many"
   | "other";
 
-export type PluralFormat = "ICU_PLURAL" | "ICU_SELECT" | "I18NEXT_SUFFIX";
+export type PluralFormat =
+  | "ICU_PLURAL"
+  | "ICU_SELECT"
+  | "I18NEXT_SUFFIX"
+  | "XCSTRINGS_PLURAL"
+  | "ANDROID_PLURALS";
 
 export type PluralIssueType =
   | "MISSING_REQUIRED_PLURAL"

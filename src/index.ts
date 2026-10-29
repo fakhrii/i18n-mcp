@@ -29,6 +29,7 @@ export * from "./core/plural/index.js";
 export * from "./core/formatting/index.js";
 export * from "./core/exchange/index.js";
 export * from "./core/deduplication/index.js";
+export * from "./core/locale/index.js";
 export * from "./mcp/server.js";
 export * from "./mcp/tools/index.js";
 export * from "./integrations/i18next/index.js";

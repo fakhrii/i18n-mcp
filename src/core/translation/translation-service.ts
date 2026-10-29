@@ -29,6 +29,20 @@ import {
   setArbEntry,
   type ArbFile,
 } from "../locale/arb-handler.js";
+import {
+  isXCStringsFile,
+  parseXCStrings,
+  serializeXCStrings,
+  setXCStringValue,
+  getXCStringValue,
+  type XCStringCatalog,
+} from "../locale/xcstrings-handler.js";
+import {
+  isAndroidStringsFile,
+  parseAndroidStrings,
+  serializeAndroidStrings,
+  type AndroidCatalog,
+} from "../locale/android-strings-handler.js";
 import { getNestedValue, setNestedValue } from "../../utils/nested-json.js";
 import { logger } from "../../utils/logger.js";
 
@@ -236,10 +250,16 @@ export async function translateI18n(
 
   const dirFiles = await listFiles(fullLocaleDir);
   const isArb = dirFiles.some((f) => isArbFile(f)) || analysis.framework === "flutter";
+  const isXCStrings = dirFiles.some((f) => isXCStringsFile(f)) || analysis.framework === "ios";
+  const isAndroid =
+    dirFiles.some((f) => isAndroidStringsFile(f)) ||
+    dirFiles.some((f) => f.endsWith("strings.xml")) ||
+    fullLocaleDir.includes("values") ||
+    analysis.framework === "android";
 
   // Load source single-file JSON if applicable to inspect source schema (namespaces vs nested sections)
   let sourceSingleFileJson: Record<string, unknown> | null = null;
-  if (!isSubdirStructure && !isArb) {
+  if (!isSubdirStructure && !isArb && !isXCStrings && !isAndroid) {
     const sourceSinglePath = path.join(fullLocaleDir, `${sourceLocale}.json`);
     if (await fileExists(sourceSinglePath)) {
       try {
@@ -423,6 +443,274 @@ export async function translateI18n(
             await fs.writeFile(absPath, serialized, "utf8");
           } catch (err: unknown) {
             errors.push(`Failed to write ARB file ${relPath}: ${String(err)}`);
+          }
+        }
+      }
+
+      continue;
+    }
+
+    // For Apple String Catalogs: Localizable.xcstrings
+    if (isXCStrings) {
+      const xcfName = dirFiles.find((f) => isXCStringsFile(f)) || "Localizable.xcstrings";
+      const relPath = toPosixPath(path.join(localeDir, xcfName));
+      const absPath = path.join(projectRoot, relPath);
+
+      let currentContent = "{}";
+      let indent = "  ";
+      if (await fileExists(absPath)) {
+        currentContent = (await readTextFile(absPath)) || "{}";
+        indent = detectIndentation(currentContent);
+      }
+
+      let catalog: XCStringCatalog;
+      try {
+        catalog = parseXCStrings(currentContent);
+        if (!catalog.sourceLanguage) catalog.sourceLanguage = sourceLocale;
+      } catch (err: unknown) {
+        errors.push(`Failed to parse .xcstrings for ${relPath}: ${String(err)}`);
+        continue;
+      }
+
+      let fileModified = false;
+
+      for (const [namespace, keysMap] of existingSource.byNamespace.entries()) {
+        if (filterNamespaces && !filterNamespaces.has(namespace)) continue;
+
+        for (const [key, sourceText] of keysMap.entries()) {
+          const existingVal = getXCStringValue(catalog, key, targetLocale);
+          if (typeof existingVal === "string" && existingVal.trim().length > 0) {
+            unchangedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: existingVal,
+              locale: targetLocale,
+              status: "UNCHANGED",
+            });
+            continue;
+          }
+
+          const providedText = lookupProvidedTranslation(
+            input.providedTranslations,
+            targetLocale,
+            namespace,
+            key
+          );
+
+          if (providedText !== undefined) {
+            translatedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: providedText,
+              locale: targetLocale,
+              status: "TRANSLATED",
+            });
+            setXCStringValue(catalog, key, targetLocale, providedText);
+            fileModified = true;
+            continue;
+          }
+
+          const reqContext: TranslationContext = {
+            ...input.context,
+            role: input.context?.role || inferRoleFromKey(key),
+            description: input.context?.description,
+            formality: input.formality || input.context?.formality,
+          };
+
+          const transResp = await provider.translate({
+            text: sourceText,
+            sourceLocale,
+            targetLocale,
+            namespace,
+            key,
+            glossary,
+            context: reqContext,
+          });
+
+          let status: TranslationItemStatus = "TRANSLATED";
+          if (!transResp.translated) {
+            status = "PENDING";
+            pendingCount++;
+            pendingItems.push({
+              key,
+              sourceText,
+              locale: targetLocale,
+              namespace,
+            });
+          } else if (transResp.confidence < 0.85) {
+            status = "REVIEW";
+            reviewCount++;
+          } else {
+            status = "TRANSLATED";
+            translatedCount++;
+          }
+
+          items.push({
+            namespace,
+            key,
+            sourceText,
+            translatedText: transResp.translatedText,
+            locale: targetLocale,
+            status,
+          });
+
+          setXCStringValue(catalog, key, targetLocale, transResp.translatedText);
+          fileModified = true;
+        }
+      }
+
+      if (fileModified) {
+        filesModifiedSet.add(relPath);
+        if (!dryRun) {
+          try {
+            await fs.mkdir(path.dirname(absPath), { recursive: true });
+            const serialized = serializeXCStrings(catalog, indent);
+            await fs.writeFile(absPath, serialized, "utf8");
+          } catch (err: unknown) {
+            errors.push(`Failed to write .xcstrings file ${relPath}: ${String(err)}`);
+          }
+        }
+      }
+
+      continue;
+    }
+
+    // For Android XML resources: res/values-<targetLocale>/strings.xml
+    if (isAndroid) {
+      const targetDirRel = toPosixPath(
+        path.join(
+          localeDir.includes("values") ? path.dirname(localeDir) : localeDir,
+          `values-${targetLocale}`
+        )
+      );
+      const relPath = toPosixPath(path.join(targetDirRel, "strings.xml"));
+      const absPath = path.join(projectRoot, relPath);
+
+      let currentContent = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n</resources>\n";
+      if (await fileExists(absPath)) {
+        currentContent = (await readTextFile(absPath)) || currentContent;
+      }
+
+      let androidCatalog: AndroidCatalog;
+      try {
+        androidCatalog = parseAndroidStrings(currentContent);
+      } catch (err: unknown) {
+        errors.push(`Failed to parse Android XML for ${relPath}: ${String(err)}`);
+        continue;
+      }
+
+      let fileModified = false;
+
+      for (const [namespace, keysMap] of existingSource.byNamespace.entries()) {
+        if (filterNamespaces && !filterNamespaces.has(namespace)) continue;
+
+        for (const [key, sourceText] of keysMap.entries()) {
+          const existingEntry = androidCatalog.strings.get(key);
+          if (existingEntry && existingEntry.value.trim().length > 0) {
+            unchangedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: existingEntry.value,
+              locale: targetLocale,
+              status: "UNCHANGED",
+            });
+            continue;
+          }
+
+          const providedText = lookupProvidedTranslation(
+            input.providedTranslations,
+            targetLocale,
+            namespace,
+            key
+          );
+
+          if (providedText !== undefined) {
+            translatedCount++;
+            items.push({
+              namespace,
+              key,
+              sourceText,
+              translatedText: providedText,
+              locale: targetLocale,
+              status: "TRANSLATED",
+            });
+            androidCatalog.strings.set(key, {
+              name: key,
+              value: providedText,
+              translatable: true,
+            });
+            fileModified = true;
+            continue;
+          }
+
+          const reqContext: TranslationContext = {
+            ...input.context,
+            role: input.context?.role || inferRoleFromKey(key),
+            description: input.context?.description,
+            formality: input.formality || input.context?.formality,
+          };
+
+          const transResp = await provider.translate({
+            text: sourceText,
+            sourceLocale,
+            targetLocale,
+            namespace,
+            key,
+            glossary,
+            context: reqContext,
+          });
+
+          let status: TranslationItemStatus = "TRANSLATED";
+          if (!transResp.translated) {
+            status = "PENDING";
+            pendingCount++;
+            pendingItems.push({
+              key,
+              sourceText,
+              locale: targetLocale,
+              namespace,
+            });
+          } else if (transResp.confidence < 0.85) {
+            status = "REVIEW";
+            reviewCount++;
+          } else {
+            status = "TRANSLATED";
+            translatedCount++;
+          }
+
+          items.push({
+            namespace,
+            key,
+            sourceText,
+            translatedText: transResp.translatedText,
+            locale: targetLocale,
+            status,
+          });
+
+          androidCatalog.strings.set(key, {
+            name: key,
+            value: transResp.translatedText,
+            translatable: true,
+          });
+          fileModified = true;
+        }
+      }
+
+      if (fileModified) {
+        filesModifiedSet.add(relPath);
+        if (!dryRun) {
+          try {
+            await fs.mkdir(path.dirname(absPath), { recursive: true });
+            const serialized = serializeAndroidStrings(androidCatalog);
+            await fs.writeFile(absPath, serialized, "utf8");
+          } catch (err: unknown) {
+            errors.push(`Failed to write Android XML file ${relPath}: ${String(err)}`);
           }
         }
       }
