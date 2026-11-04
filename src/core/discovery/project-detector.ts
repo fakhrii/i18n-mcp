@@ -68,6 +68,14 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
     (await fileExists(path.join(projectRoot, "angular.json")))
   ) {
     framework = "angular";
+  } else if (
+    "vue" in allDeps ||
+    "nuxt" in allDeps ||
+    "@nuxt/kit" in allDeps ||
+    (await fileExists(path.join(projectRoot, "nuxt.config.ts"))) ||
+    (await fileExists(path.join(projectRoot, "nuxt.config.js")))
+  ) {
+    framework = "vue";
   } else if ("react" in allDeps || "react-dom" in allDeps) {
     framework = "react";
   }

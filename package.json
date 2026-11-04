@@ -8,12 +8,16 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test",
     "start": "node dist/mcp/server.js"
   },
   "keywords": [
@@ -30,7 +34,7 @@
     "ngx-translate",
     "i18next"
   ],
-  "author": "",
+  "author": "Fakhreddine Kraiem",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",

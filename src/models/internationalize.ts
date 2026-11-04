@@ -12,6 +12,10 @@ export type InternationalizeStatus =
   | "FAILED_VALIDATION";
 
 import type { TranslationProviderType } from "./config.js";
+import type {
+  FormalityType,
+  TranslationContext,
+} from "../core/translation/context-helper.js";
 
 export interface InternationalizeInput {
   projectPath?: string;
@@ -31,6 +35,8 @@ export interface InternationalizeInput {
   structure?: I18nStructureType;
   provider?: TranslationProviderType;
   apiKey?: string;
+  formality?: FormalityType;
+  context?: TranslationContext;
 }
 
 export interface InternationalizeResult {

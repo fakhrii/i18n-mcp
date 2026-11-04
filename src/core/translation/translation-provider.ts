@@ -1,10 +1,13 @@
+import type { TranslationContext } from "./context-helper.js";
+
 export interface TranslationRequest {
   text: string;
   sourceLocale: string;
   targetLocale: string;
   namespace?: string;
   key?: string;
-  glossary?: Record<string, string>;
+  glossary?: any;
+  context?: TranslationContext;
 }
 
 export interface TranslationResponse {

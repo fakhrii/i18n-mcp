@@ -86,6 +86,10 @@ export const internationalizeSchema = {
     .string()
     .optional()
     .describe("Optional API key for cloud translation provider."),
+  formality: z
+    .enum(["formal", "informal", "neutral"])
+    .optional()
+    .describe("Optional grammatical formality for translations ('formal', 'informal', or 'neutral')."),
 };
 
 export function registerInternationalizeTool(server: McpServer): void {
@@ -111,6 +115,7 @@ export function registerInternationalizeTool(server: McpServer): void {
       providedTranslations,
       provider,
       apiKey,
+      formality,
     }) => {
       logger.info(
         `Invoking internationalize tool (dryRun=${dryRun ?? true}, apply=${apply ?? false}, translate=${translate ?? false}, provider=${provider || "auto"})`
@@ -134,6 +139,7 @@ export function registerInternationalizeTool(server: McpServer): void {
           providedTranslations,
           provider,
           apiKey,
+          formality,
         });
 
         const summaryText = [

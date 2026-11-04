@@ -1,6 +1,15 @@
-export type FrameworkType = "react-native" | "react" | "nextjs" | "flutter" | "angular" | "unknown";
-export type LanguageType = "typescript" | "javascript" | "dart";
-export type PackageManagerType = "npm" | "yarn" | "pnpm" | "bun" | "pub" | "unknown";
+export type FrameworkType =
+  | "react-native"
+  | "react"
+  | "nextjs"
+  | "flutter"
+  | "angular"
+  | "vue"
+  | "ios"
+  | "android"
+  | "unknown";
+export type LanguageType = "typescript" | "javascript" | "dart" | "swift" | "kotlin" | "java";
+export type PackageManagerType = "npm" | "yarn" | "pnpm" | "bun" | "pub" | "gradle" | "spm" | "cocoapods" | "unknown";
 export type I18nLibraryType =
   | "react-i18next"
   | "i18next"
@@ -11,6 +20,10 @@ export type I18nLibraryType =
   | "ngx-translate"
   | "@angular/localize"
   | "transloco"
+  | "vue-i18n"
+  | "@nuxtjs/i18n"
+  | "apple-strings"
+  | "android-resources"
   | "custom"
   | "none";
 

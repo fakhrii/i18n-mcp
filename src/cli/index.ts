@@ -374,6 +374,9 @@ program
   .option("--source-locale <locale>", "Source locale (e.g. 'en')")
   .option("--target-locales <locales...>", "Target locales to translate to (e.g. 'fr' 'es')")
   .option("--namespaces <namespaces...>", "Limit translation to specific namespaces")
+  .option("--provider <provider>", "Translation provider ('auto', 'deepl', 'openai', 'gemini', 'dictionary')")
+  .option("--api-key <key>", "API key for cloud translation provider")
+  .option("--formality <formality>", "Grammatical formality ('formal', 'informal', 'neutral')")
   .option("--dry-run", "Simulate translation without modifying files", false)
   .option("--json", "Output results strictly as JSON", false)
   .action(
@@ -383,6 +386,9 @@ program
         sourceLocale?: string;
         targetLocales?: string[];
         namespaces?: string[];
+        provider?: any;
+        apiKey?: string;
+        formality?: any;
         dryRun: boolean;
         json: boolean;
       }
@@ -397,6 +403,9 @@ program
           sourceLocale: options.sourceLocale,
           targetLocales: options.targetLocales,
           namespaces: options.namespaces,
+          provider: options.provider,
+          apiKey: options.apiKey,
+          formality: options.formality,
           dryRun: options.dryRun,
         });
 
@@ -703,6 +712,629 @@ program
           console.error(`Error (${error.code}): ${error.message}`);
         } else {
           console.error("Type generation failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("pseudo")
+  .description("Generate pseudo-localized catalogs for UI layout and font stress testing")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--source-locale <locale>", "Source locale to read from (e.g. 'en')")
+  .option("--target-locale <locale>", "Target pseudo-locale (e.g. 'qps-ploc', 'en-XA', 'qps-plocm')", "qps-ploc")
+  .option("--strategy <strategy>", "Strategy: 'accented', 'bidi', 'expansion', or 'all'", "all")
+  .option("--expansion <number>", "Length expansion ratio (e.g. 0.35)", "0.35")
+  .option("--delimiter <type>", "Delimiter: 'exclamation' ([!! ... !!]), 'brackets' ([...]), or 'none'", "exclamation")
+  .option("--namespaces <namespaces...>", "Limit to specific namespaces")
+  .option("--dry-run", "Preview changes without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        sourceLocale?: string;
+        targetLocale: string;
+        strategy: "accented" | "bidi" | "expansion" | "all";
+        expansion: string;
+        delimiter: "brackets" | "exclamation" | "none";
+        namespaces?: string[];
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { generatePseudolocale } = await import(
+          "../core/pseudolocale/pseudolocalizer.js"
+        );
+        const expansionRatio = parseFloat(options.expansion) || 0.35;
+
+        const result = await generatePseudolocale({
+          projectPath,
+          sourceLocale: options.sourceLocale,
+          targetLocale: options.targetLocale,
+          strategy: options.strategy,
+          expansionRatio,
+          delimiter: options.delimiter,
+          namespaces: options.namespaces,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Pseudo-Localization Generation ---\n");
+        console.log(`Source Locale:     ${result.sourceLocale}`);
+        console.log(`Target Locale:     ${result.targetLocale}`);
+        console.log(`Mode:              ${result.dryRun ? "Dry-run (Simulated)" : "Written to disk"}`);
+        console.log(`Keys Transformed:  ${result.keysTransformed}`);
+        console.log(`Files Modified:    ${result.filesModified.length}`);
+
+        if (result.filesModified.length > 0) {
+          console.log(`\nModified Catalogs:`);
+          for (const f of result.filesModified) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log(`\nUnified Diff:`);
+          console.log(result.diff);
+        }
+
+        console.log("\n--------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Pseudo-localization failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("format")
+  .alias("sort")
+  .description("Clean, sort, and format translation catalogs (JSON and ARB)")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--locales <locales...>", "Locales to format")
+  .option("--namespaces <namespaces...>", "Namespaces to format")
+  .option("--align-with-source", "Align target locale key order to match source locale", false)
+  .option("--indent <number>", "Indentation space count", "2")
+  .option("--dry-run", "Preview formatting diff without writing to disk", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        locales?: string[];
+        namespaces?: string[];
+        alignWithSource: boolean;
+        indent: string;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { formatCatalogs } = await import(
+          "../core/format/catalog-formatter.js"
+        );
+        const indentSpaces = parseInt(options.indent, 10) || 2;
+
+        const result = await formatCatalogs({
+          projectPath,
+          locales: options.locales,
+          namespaces: options.namespaces,
+          alignWithSource: options.alignWithSource,
+          indent: indentSpaces,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Catalog Formatting & Sorting ---\n");
+        console.log(`Mode:              ${result.dryRun ? "Dry-run (Simulated)" : "Applied to disk"}`);
+        console.log(`Files Formatted:   ${result.filesFormatted.length}`);
+        console.log(`Files Up-to-Date:  ${result.filesSkipped.length}`);
+        console.log(`Keys Processed:    ${result.totalKeysSorted}`);
+
+        if (result.filesFormatted.length > 0) {
+          console.log(`\nFormatted Files:`);
+          for (const f of result.filesFormatted) {
+            console.log(`  - ${f}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log(`\nUnified Diff:`);
+          console.log(result.diff);
+        }
+
+        console.log("\n------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Catalog formatting failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("rtl")
+  .alias("audit-rtl")
+  .description("Audit codebase for RTL and bidirectional layout compatibility")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit audit to specific files or directories")
+  .option("--target-locales <locales...>", "Target locales (e.g. 'ar' 'he')")
+  .option("--fix", "Automatically convert physical properties to logical equivalents", false)
+  .option("--dry-run", "Explicitly run fix in preview mode (default when --fix is omitted)", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        targetLocales?: string[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditRtlLayout } = await import("../core/rtl/rtl-auditor.js");
+
+        const result = await auditRtlLayout({
+          projectPath,
+          scope: options.scope,
+          targetLocales: options.targetLocales,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- RTL & Bidirectional Layout Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`RTL Targeted:        ${result.isRtlTargeted ? `YES [${result.rtlLocalesDetected.join(", ")}]` : "NO (General readiness audit)"}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`Auto-Fixable:        ${result.fixableCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Mode:          ${options.dryRun ? "Dry-run (Simulated)" : "Applied to disk"}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected RTL Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.severity.toUpperCase()}] ${issue.file}:${issue.line}:${issue.column} (${issue.category})${fixable}`
+            );
+            console.log(`    ${issue.message}`);
+            if (issue.suggestedReplacement) {
+              console.log(`    Suggested: ${issue.suggestedReplacement}`);
+            }
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n----------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("RTL audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("plurals")
+  .description("Audit translation catalogs against Unicode CLDR plural and gender rules")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--locales <locales...>", "Target locales to audit (e.g. 'ar' 'ru' 'pl')")
+  .option("--namespaces <namespaces...>", "Limit auditing to specific namespaces")
+  .option("--fix", "Automatically scaffold missing required CLDR plural forms", false)
+  .option("--dry-run", "Preview scaffolded fixes without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        locales?: string[];
+        namespaces?: string[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditPlurals } = await import("../core/plural/cldr-linter.js");
+
+        const result = await auditPlurals({
+          projectPath,
+          locales: options.locales,
+          namespaces: options.namespaces,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Unicode CLDR Plural & Gender Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`Catalogs Audited:    ${result.totalCatalogs}`);
+        console.log(`Plurals Audited:     ${result.totalPluralsAudited}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`Missing Categories:  ${result.missingCategoriesCount}`);
+        console.log(`Missing Other:       ${result.missingOtherFallbackCount}`);
+        console.log(`Invalid Categories:  ${result.invalidCategoriesCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Applied:       ${result.fixesApplied || 0}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.severity.toUpperCase()}] ${issue.file} (${issue.format}) -> Key: ${issue.key}${fixable}`
+            );
+            console.log(`    ${issue.message}`);
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Plural audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("formatting")
+  .description("Audit source code for unlocalized number, date, time, percentage, and currency formatting")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--scope <scope...>", "Limit audit to specific relative file/folder paths")
+  .option("--categories <categories...>", "Categories to audit: CURRENCY NUMBER PERCENTAGE DATE TIME")
+  .option("--fix", "Automatically migrate hardcoded formatting to Intl or Flutter formatters", false)
+  .option("--dry-run", "Preview formatting migration diff without modifying files", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        scope?: string[];
+        categories?: any[];
+        fix: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditFormatting } = await import("../core/formatting/formatting-auditor.js");
+
+        const result = await auditFormatting({
+          projectPath,
+          scope: options.scope,
+          categories: options.categories,
+          fix: options.fix,
+          dryRun: options.dryRun || !options.fix,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log("\n--- Number, Date & Currency Formatting Audit ---\n");
+        console.log(`Status:              ${result.totalIssues === 0 ? "COMPLIANT" : "ISSUES DETECTED"}`);
+        console.log(`Framework:           ${result.framework}`);
+        console.log(`Total Issues:        ${result.totalIssues}`);
+        console.log(`- Currency:          ${result.currencyIssuesCount}`);
+        console.log(`- Number (.toFixed): ${result.numberIssuesCount}`);
+        console.log(`- Percentage (%):    ${result.percentageIssuesCount}`);
+        console.log(`- Date Formatting:   ${result.dateIssuesCount}`);
+        console.log(`- Time Formatting:   ${result.timeIssuesCount || 0}`);
+        console.log(`Auto-Fixable:        ${result.fixableCount}`);
+
+        if (options.fix) {
+          console.log(`Fixes Applied:       ${result.fixesApplied || 0}`);
+          console.log(`Files Affected:      ${result.filesAffected.length}`);
+        }
+
+        if (result.issues.length > 0) {
+          console.log("\nDetected Issues:");
+          for (const issue of result.issues) {
+            const fixable = issue.autoFixable ? " [Auto-Fixable]" : "";
+            console.log(
+              `  [${issue.category}] ${issue.file}:${issue.line}:${issue.column}${fixable}`
+            );
+            console.log(`    Expression: ${issue.rawExpression}`);
+            console.log(`    Message:    ${issue.message}`);
+            if (issue.suggestedReplacement) {
+              console.log(`    Fix:        ${issue.suggestedReplacement}`);
+            }
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:");
+          console.log(result.diff);
+        }
+
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Formatting audit failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("export")
+  .description("Export translation catalogs to standard XLIFF (1.2 / 2.0) or TMX 1.4 files")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--format <format>", "Exchange format: 'xliff-1.2', 'xliff-2.0', or 'tmx-1.4'", "xliff-1.2")
+  .option("--source-locale <locale>", "Source locale code (e.g. 'en')")
+  .option("--target-locales <locales...>", "Target locales to export (e.g. 'fr' 'de' 'es')")
+  .option("--namespaces <namespaces...>", "Limit export to specific namespaces")
+  .option("--out <dirOrFile>", "File or directory path to output exported exchange files")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        format: any;
+        sourceLocale?: string;
+        targetLocales?: string[];
+        namespaces?: string[];
+        out?: string;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { exportTranslations } = await import("../core/exchange/translation-exporter.js");
+
+        const result = await exportTranslations({
+          projectPath,
+          format: options.format,
+          sourceLocale: options.sourceLocale,
+          targetLocales: options.targetLocales,
+          namespaces: options.namespaces,
+          outputPath: options.out,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(`\n--- Translation Export (${result.format.toUpperCase()}) ---\n`);
+        console.log(`Source Locale:       ${result.sourceLocale}`);
+        console.log(`Target Locales:      ${result.targetLocales.join(", ")}`);
+        console.log(`Total Units:         ${result.totalUnitsExported}`);
+        if (result.filesExported.length > 0) {
+          console.log(`Files Generated:     ${result.filesExported.length}`);
+          for (const f of result.filesExported) {
+            console.log(`  - ${f}`);
+          }
+        }
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Export failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("import")
+  .description("Import XLIFF or TMX translations back into project catalogs")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .requiredOption("--file <filePath>", "Path to XLIFF or TMX file to import")
+  .option("--format <format>", "Exchange format: 'xliff-1.2', 'xliff-2.0', or 'tmx-1.4'")
+  .option("--target-locales <locales...>", "Target locales to import into")
+  .option("--no-overwrite", "Do not overwrite existing translations in catalogs")
+  .option("--dry-run", "Preview imported translations without modifying catalogs", false)
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        file: string;
+        format?: any;
+        targetLocales?: string[];
+        overwrite: boolean;
+        dryRun: boolean;
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { importTranslations } = await import("../core/exchange/translation-importer.js");
+
+        const result = await importTranslations({
+          projectPath,
+          filePath: options.file,
+          format: options.format,
+          targetLocales: options.targetLocales,
+          overwrite: options.overwrite,
+          dryRun: options.dryRun,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(`\n--- Translation Import (${result.format.toUpperCase()}) ---\n`);
+        console.log(`Target Locale:       ${result.targetLocale || "detected"}`);
+        console.log(`Units Processed:     ${result.unitsProcessed}`);
+        console.log(`Units Imported:      ${result.unitsImported}`);
+        console.log(`Units Skipped:       ${result.unitsSkipped}`);
+        console.log(`Mode:                ${result.dryRun ? "DRY-RUN (Simulated)" : "APPLIED TO DISK"}`);
+        if (result.filesModified.length > 0) {
+          console.log(`Files Modified:      ${result.filesModified.length}`);
+          for (const f of result.filesModified) {
+            console.log(`  - ${f}`);
+          }
+        }
+        if (result.diff) {
+          console.log("\nUnified Diff:\n" + result.diff);
+        }
+        console.log("\n-------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Import failed:", error);
+        }
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("dedupe")
+  .description("Audit catalogs for exact duplicate keys, fuzzy near-duplicates, and cross-namespace redundancy")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("--threshold <number>", "Similarity threshold (0.5 - 1.0)", "0.85")
+  .option("--exact-only", "Only detect exact duplicate text", false)
+  .option("--cross-namespace-only", "Only detect duplicates across multiple namespaces", false)
+  .option("--target-namespace <namespace>", "Target namespace for consolidated keys", "common")
+  .option("--consolidate", "Automatically consolidate duplicate keys into shared namespace", false)
+  .option("--dry-run", "Preview consolidation diff without modifying files", false)
+  .option("--scope <scope...>", "Scope files/folders to update code references")
+  .option("--json", "Output results strictly as JSON", false)
+  .action(
+    async (
+      projectPath: string,
+      options: {
+        threshold: string;
+        exactOnly: boolean;
+        crossNamespaceOnly: boolean;
+        targetNamespace: string;
+        consolidate: boolean;
+        dryRun: boolean;
+        scope?: string[];
+        json: boolean;
+      }
+    ) => {
+      try {
+        const { auditDuplicates } = await import(
+          "../core/deduplication/deduplication-engine.js"
+        );
+
+        const result = await auditDuplicates({
+          projectPath,
+          similarityThreshold: parseFloat(options.threshold),
+          exactOnly: options.exactOnly,
+          crossNamespaceOnly: options.crossNamespaceOnly,
+          targetNamespace: options.targetNamespace,
+          consolidate: options.consolidate,
+          dryRun: options.dryRun || !options.consolidate,
+          scope: options.scope,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        const totalDuplicates =
+          result.exactDuplicatesCount +
+          result.fuzzyDuplicatesCount +
+          result.crossNamespaceDuplicatesCount;
+
+        console.log("\n--- Translation Deduplication & Similarity Audit ---\n");
+        console.log(
+          `Status:                 ${totalDuplicates === 0 ? "OPTIMIZED (No Duplicates)" : "REDUNDANCY DETECTED"}`
+        );
+        console.log(`Source Locale:          ${result.sourceLocale}`);
+        console.log(`Total Keys Scanned:     ${result.totalKeysScanned}`);
+        console.log(`Exact Duplicates:       ${result.exactDuplicatesCount}`);
+        console.log(`Cross-Namespace:        ${result.crossNamespaceDuplicatesCount}`);
+        console.log(`Fuzzy Near-Duplicates:  ${result.fuzzyDuplicatesCount}`);
+        console.log(`Duplicate Clusters:     ${result.clusters.length}`);
+
+        if (options.consolidate) {
+          console.log(`Keys Consolidated:      ${result.keysConsolidated || 0}`);
+          console.log(`Files Affected:         ${result.filesModified?.length || 0}`);
+        }
+
+        if (result.clusters.length > 0) {
+          console.log("\nDuplicate Clusters:");
+          for (const c of result.clusters) {
+            console.log(
+              `  "${c.value}" (${c.totalOccurrences}x) -> Canonical: ${c.canonicalNamespace}.${c.canonicalKey}`
+            );
+            console.log(`    Keys: ${c.keys.map((k) => `${k.namespace}.${k.key}`).join(", ")}`);
+          }
+        }
+
+        if (result.matches.some((m) => m.matchType === "FUZZY")) {
+          console.log("\nFuzzy Near-Duplicates:");
+          for (const m of result.matches.filter((m) => m.matchType === "FUZZY")) {
+            console.log(
+              `  [${Math.round(m.similarity * 100)}% Match] ${m.namespaceA}.${m.keyA} ("${m.valueA}") <-> ${m.namespaceB}.${m.keyB} ("${m.valueB}")`
+            );
+          }
+        }
+
+        if (result.diff) {
+          console.log("\nUnified Diff:\n" + result.diff);
+        }
+
+        console.log("\n----------------------------------------------------\n");
+      } catch (error: unknown) {
+        if (error instanceof I18nMcpError) {
+          console.error(`Error (${error.code}): ${error.message}`);
+        } else {
+          console.error("Deduplication audit failed:", error);
         }
         process.exit(1);
       }

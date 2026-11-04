@@ -8,6 +8,7 @@ import { detectI18n } from "../discovery/i18n-detector.js";
 import { scanSourceFileAst } from "./ast-scanner.js";
 import { scanDartSourceFile } from "./dart-scanner.js";
 import { scanHtmlTemplateFile } from "./html-scanner.js";
+import { scanVueSourceFile } from "./vue-scanner.js";
 import { readTextFile, toPosixPath } from "../../utils/file-system.js";
 import { logger } from "../../utils/logger.js";
 
@@ -44,6 +45,7 @@ export async function scanHardcodedTexts(
 
     const isDart = relFile.endsWith(".dart");
     const isHtml = relFile.endsWith(".html");
+    const isVue = relFile.endsWith(".vue");
     const detected = isDart
       ? scanDartSourceFile({
           filePath: toPosixPath(relFile),
@@ -56,6 +58,16 @@ export async function scanHardcodedTexts(
         })
       : isHtml
       ? scanHtmlTemplateFile({
+          filePath: toPosixPath(relFile),
+          sourceCode: content,
+          knownNamespaces,
+          config,
+          onlyUserFacing: options?.onlyUserFacing ?? true,
+          minConfidence: options?.minConfidence ?? 0.0,
+          ambiguousOnly: options?.ambiguousOnly ?? false,
+        })
+      : isVue
+      ? scanVueSourceFile({
           filePath: toPosixPath(relFile),
           sourceCode: content,
           knownNamespaces,

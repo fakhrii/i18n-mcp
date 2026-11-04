@@ -7,6 +7,14 @@ import { registerTranslateI18nTool } from "./translate-i18n.js";
 import { registerValidateI18nTool } from "./validate-i18n.js";
 import { registerInternationalizeTool } from "./internationalize.js";
 import { registerGenerateI18nTypesTool } from "./generate-i18n-types.js";
+import { registerGeneratePseudolocaleTool } from "./generate-pseudolocale.js";
+import { registerFormatCatalogsTool } from "./format-catalogs.js";
+import { registerAuditRtlTool } from "./audit-rtl.js";
+import { registerAuditPluralsTool } from "./audit-plurals.js";
+import { registerAuditFormattingTool } from "./audit-formatting.js";
+import { registerExportTranslationsTool } from "./export-translations.js";
+import { registerImportTranslationsTool } from "./import-translations.js";
+import { registerDeduplicateI18nTool } from "./deduplicate-i18n.js";
 
 export function registerAllTools(server: McpServer): void {
   registerAnalyzeProjectTool(server);
@@ -17,6 +25,14 @@ export function registerAllTools(server: McpServer): void {
   registerValidateI18nTool(server);
   registerInternationalizeTool(server);
   registerGenerateI18nTypesTool(server);
+  registerGeneratePseudolocaleTool(server);
+  registerFormatCatalogsTool(server);
+  registerAuditRtlTool(server);
+  registerAuditPluralsTool(server);
+  registerAuditFormattingTool(server);
+  registerExportTranslationsTool(server);
+  registerImportTranslationsTool(server);
+  registerDeduplicateI18nTool(server);
 }
 
 export * from "./analyze-project.js";
@@ -27,3 +43,11 @@ export * from "./translate-i18n.js";
 export * from "./validate-i18n.js";
 export * from "./internationalize.js";
 export * from "./generate-i18n-types.js";
+export * from "./generate-pseudolocale.js";
+export * from "./format-catalogs.js";
+export * from "./audit-rtl.js";
+export * from "./audit-plurals.js";
+export * from "./audit-formatting.js";
+export * from "./export-translations.js";
+export * from "./import-translations.js";
+export * from "./deduplicate-i18n.js";

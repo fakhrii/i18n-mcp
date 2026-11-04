@@ -14,7 +14,7 @@ export function createI18nMcpServer(): McpServer {
 }
 
 export async function startStdioServer(): Promise<void> {
-  logger.info("Starting i18n MCP Server on stdio (React Native, React, Next.js, Flutter, Angular)...");
+  logger.info("Starting i18n MCP Server on stdio (React Native, React, Next.js, Flutter, Angular, Vue/Nuxt)...");
   const server = createI18nMcpServer();
   const transport = new StdioServerTransport();
 

@@ -15,6 +15,7 @@ Designed for AI coding agents (Antigravity, Claude Code, Cursor, Gemini CLI, etc
 | **Next.js** | TypeScript, TSX, JS, JSX | React text tags, `<Link>`, metadata titles/descriptions, Pages & App Router | `next-intl`, `next-i18next`, `react-i18next` |
 | **Flutter** | Dart | `Text()`, `SelectableText()`, `TextField(decoration:)`, `SnackBar()`, `AppBar(title:)` | `flutter_localizations`, `intl`, ARB |
 | **Angular** | TypeScript, HTML | HTML templates (`.html` and inline), Angular Material (`mat-card-title`, `mat-hint`), `SnackBar.open()`, `title`, `placeholder`, `aria-label` | `@ngx-translate/core`, `@angular/localize`, `transloco` |
+| **Vue / Nuxt** | TypeScript, JavaScript, Vue SFC | `<template>` text sinks, `router-link`, `nuxt-link`, `el-button`, `v-btn`, `title`, `placeholder`, `aria-label`, `toast` | `vue-i18n`, `@nuxtjs/i18n` |
 
 ---
 
@@ -77,15 +78,22 @@ Safely and atomically applies an approved i18n migration plan to the project (Re
 - **Returns**: Applied changes summary, modified files list, and diff preview.
 
 ### `translate_i18n`
-Translates missing keys across target locale files (JSON or Flutter ARB) using pluggable cloud translation providers (`deepl`, `openai`, `gemini`), built-in dictionaries, custom glossaries, or AI agent translations without overwriting existing translations.
+Translates missing keys across target locale files (JSON or Flutter ARB) using pluggable cloud translation providers (`deepl`, `openai`, `gemini`), built-in dictionaries, custom glossaries, or AI agent translations with **Context-Aware Prompting** without overwriting existing translations.
 - **Inputs**:
   - `projectPath`: Project root directory.
   - `sourceLocale`, `targetLocales`: Locales to translate.
   - `namespaces`: Target namespaces to translate.
   - `provider` (`"auto"` | `"deepl"` | `"openai"` | `"gemini"` | `"dictionary"`, optional, default `"auto"`): Cloud translation provider. **Completely optional and non-blocking**; seamlessly falls back to offline dictionaries if unconfigured, offline, or timed out.
   - `apiKey` (string, optional): Cloud translation API key (or set `DEEPL_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in environment).
+  - `formality` (`"formal"` | `"informal"` | `"neutral"`, optional): Desired tone / grammatical formality (e.g. German "Sie" vs "du", French "vous" vs "tu", Spanish "usted" vs "tú").
+  - `context` (object, optional): Explicit contextual clues including `role` ("BUTTON", "TITLE", "PLACEHOLDER"), `componentName`, `elementTag`, `propName`, `filePath`, `description`, `maxLength`, and `surroundingText`.
+  - `glossary` (object, optional): Brand glossary containing `neverTranslate` brand terms and `terms` dictionary mappings.
   - `dryRun`: Preview translation changes without writing to disk.
   - `providedTranslations` (optional map of `{ [locale]: { [key]: translation } }`).
+- **Context-Aware Intelligence**:
+  - Automatically infers UI role classifications from key naming conventions (e.g. `*_BUTTON`, `*_TITLE`, `*_PLACEHOLDER`, `*_ERROR`, `*_TOOLTIP`, `*_NAV`).
+  - Automatically extracts Flutter ARB `@key.description` translator notes to guide LLM disambiguation and parts of speech.
+  - Injects structured context clues into OpenAI system prompts, Gemini instructions, and DeepL API context & formality parameters.
 
 ### `validate_i18n`
 Validates i18n implementation for missing translations, interpolation variable mismatches, orphan keys, unused dead keys, and malformed files across JSON and ARB catalogs.
@@ -94,6 +102,42 @@ Validates i18n implementation for missing translations, interpolation variable m
 ### `generate_i18n_types`
 Generates compile-time TypeScript definitions (`resources.d.ts`) with module augmentation for i18next / react-i18next / next-intl from source locale catalogs, ensuring strict autocomplete and compile-time key safety.
 - **Inputs**: `projectPath`, `outputPath` (default: `src/@types/resources.d.ts`), `writeToDisk` (boolean, default: `true`).
+
+### `generate_pseudolocale`
+Generates pseudo-localized catalogs (`qps-ploc`, `en-XA`, `qps-plocm` bidi) from source locale files for L10n stress-testing. Tests font glyph support, text expansion (+35%), UI layout clipping, and identifies hardcoded unextracted strings while safely preserving variables and HTML tags.
+- **Inputs**: `projectPath`, `sourceLocale`, `targetLocale` (default: `"qps-ploc"`), `strategy` (`"accented"` | `"bidi"` | `"expansion"` | `"all"`), `expansionRatio` (default: `0.35`), `delimiter` (`"brackets"` | `"exclamation"` | `"none"`), `namespaces`, `dryRun`.
+
+### `format_catalogs`
+Cleans, sorts, and formats translation catalogs (JSON and ARB) alphabetically or aligned with source locale key ordering, eliminating merge conflicts and inconsistent indentation.
+- **Inputs**: `projectPath`, `locales`, `namespaces`, `sortOrder` (`"alphabetical"` | `"align-with-source"`), `indent` (default: `2`), `dryRun`.
+
+### `audit_rtl`
+Audits codebase for Right-to-Left (RTL) and bidirectional layout bugs, detecting physical spacing (`marginLeft`/`marginRight`), alignment (`textAlign: left`), physical Tailwind utility classes (`ml-`, `mr-`, `text-left`), Flutter physical offsets (`EdgeInsets.only(left:)`, `Alignment.centerLeft`), directional icons, and missing RTL root configs, with automated logical property migration (`fix: true`).
+- **Inputs**: `projectPath`, `scope`, `targetLocales` (e.g. `['ar', 'he']`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
+### `audit_plurals`
+Audits translation catalogs (JSON and Flutter ARB) against official Unicode CLDR plural and gender rules, detecting missing mandatory categories (e.g., Arabic `zero`/`two`/`few`/`many`, Russian `few`/`many`), missing mandatory `other` fallback branches, and variable mismatches, with automated scaffold fixing (`fix: true`).
+- **Inputs**: `projectPath`, `locales` (e.g. `['ar', 'ru', 'pl']`), `namespaces`, `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
+### `audit_formatting`
+Audits project source code (React Native, React, Vue, Flutter, Next.js) for unlocalized formatting anti-patterns:
+- **Hardcoded Currency Concatenation**: Flagging expressions like `` `$${price}` ``, `price + " €"`, and Flutter `'\$${item.price}'`, with automated migration to `Intl.NumberFormat` or Flutter `NumberFormat.simpleCurrency`.
+- **Unlocalized Decimals**: Detects `.toFixed()` or `.toStringAsFixed()` where decimal points/commas depend on user locale.
+- **Hardcoded Percentages**: Detects `` `${discount}%` `` and migrates to localized percentage formatting.
+- **Unparameterized Date & Time**: Detects bare `.toLocaleDateString()` and `.toLocaleTimeString()` calls with automated migration to `Intl.DateTimeFormat(undefined, { dateStyle: "medium" })`.
+- **Inputs**: `projectPath`, `scope`, `categories` (`CURRENCY`, `NUMBER`, `PERCENTAGE`, `DATE`, `TIME`), `fix` (boolean, default: `false`), `dryRun` (boolean, default: `true`).
+
+### `export_translations`
+Exports translation catalogs (JSON or Flutter ARB) into standard XLIFF (1.2 / 2.0) or TMX 1.4 exchange files for professional translation agencies and Translation Management Systems (Crowdin, Lokalise, Phrase, Smartling, Trados).
+- **Inputs**: `projectPath`, `format` (`"xliff-1.2"` | `"xliff-2.0"` | `"tmx-1.4"`), `sourceLocale`, `targetLocales`, `namespaces`, `outputPath`, `includeNotes` (boolean, default `true`).
+
+### `import_translations`
+Imports translated strings from standard XLIFF (1.2 / 2.0) or TMX 1.4 exchange files back into project translation catalogs (JSON or Flutter ARB), with unified diff support and collision safety.
+- **Inputs**: `projectPath`, `filePath`, `content`, `format`, `targetLocales`, `overwrite` (boolean, default `true`), `dryRun` (boolean, default `false`).
+
+### `deduplicate_i18n`
+Audits catalogs for exact duplicate keys, fuzzy near-duplicates, and cross-namespace redundancy using normalized Levenshtein similarity, with optional automated key consolidation and source code call-site updates.
+- **Inputs**: `projectPath`, `sourceLocale`, `similarityThreshold` (number 0.5-1.0, default `0.85`), `exactOnly` (boolean), `crossNamespaceOnly` (boolean), `targetNamespace` (default `"common"`), `consolidate` (boolean, default `false`), `dryRun` (boolean, default `true`), `scope`.
 
 ### `internationalize`
 End-to-end orchestration tool combining analysis, scanning, candidate resolution, planning, modification, translation, and validation into a unified workflow.
@@ -220,7 +264,7 @@ Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini 
 # Build TypeScript
 npm run build
 
-# Run unit and integration tests (44 test files, 295 tests)
+# Run unit and integration tests (58 test files, 417 tests)
 npm test
 
 # Typecheck
@@ -242,6 +286,27 @@ npx i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
 npx i18n-mcp scan ./my-project --scope src/features/auth
+
+# Export catalogs to standard XLIFF (1.2 / 2.0) or TMX for translation agencies
+npx i18n-mcp export ./my-project --format xliff-1.2 --target-locales fr es de --out ./exports
+
+# Import translated XLIFF or TMX files back into catalogs
+npx i18n-mcp import ./my-project --file ./exports/en_fr.xlf
+
+# Audit catalogs for exact and fuzzy duplicate keys and consolidate redundancies
+npx i18n-mcp dedupe ./my-project --threshold 0.85 --consolidate
+
+# Audit and migrate unlocalized currency, number, percentage, and date formatting
+npx i18n-mcp formatting ./my-project --categories CURRENCY NUMBER PERCENTAGE DATE --fix
+
+# Audit and scaffold Unicode CLDR plural categories across catalogs
+npx i18n-mcp plurals ./my-project --locales ar ru pl --fix
+
+# Audit RTL layout and auto-fix physical properties to logical
+npx i18n-mcp rtl ./my-project --target-locales ar he --fix
+
+# Translate missing keys with context-aware formality
+npx i18n-mcp translate ./my-project --target-locales fr es --formality formal --provider openai
 
 # Generate TypeScript type definitions (resources.d.ts)
 npx i18n-mcp types ./my-project

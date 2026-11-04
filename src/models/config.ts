@@ -15,6 +15,12 @@ export interface I18nTranslationConfig {
   model?: string;
 }
 
+export interface BrandGlossaryConfig {
+  neverTranslate?: string[];
+  terms?: Record<string, Record<string, string> | string>;
+  caseSensitive?: boolean;
+}
+
 export interface I18nMcpConfig {
   framework?: FrameworkType;
   library?: I18nLibraryType;
@@ -25,6 +31,6 @@ export interface I18nMcpConfig {
   include?: string[];
   exclude?: string[];
   namespaces?: Record<string, string>;
-  glossary?: Record<string, string>;
+  glossary?: BrandGlossaryConfig | Record<string, string>;
   translation?: I18nTranslationConfig;
 }

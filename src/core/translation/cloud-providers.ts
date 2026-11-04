@@ -4,6 +4,7 @@ import type {
   TranslationResponse,
 } from "./translation-provider.js";
 import { DictionaryTranslationProvider } from "./translation-provider.js";
+import { buildContextPrompt } from "./context-helper.js";
 import type { TranslationProviderType } from "../../models/config.js";
 import { logger } from "../../utils/logger.js";
 
@@ -42,10 +43,34 @@ export class DeeplTranslationProvider implements ITranslationProvider {
       return { translatedText: req.text, translated: false, confidence: 0 };
     }
 
-    const { text, sourceLocale, targetLocale } = req;
+    const { text, sourceLocale, targetLocale, context } = req;
     let targetLang = targetLocale.toUpperCase().split("-")[0]!;
     if (targetLang === "EN") targetLang = "EN-US";
     if (targetLang === "PT") targetLang = "PT-PT";
+
+    const bodyPayload: Record<string, unknown> = {
+      text: [text],
+      target_lang: targetLang,
+      source_lang: sourceLocale ? sourceLocale.toUpperCase().split("-")[0] : undefined,
+    };
+
+    if (context) {
+      const contextParts: string[] = [];
+      if (context.description) contextParts.push(context.description);
+      if (context.role) contextParts.push(`UI role: ${context.role}`);
+      if (context.componentName) contextParts.push(`Component: ${context.componentName}`);
+      if (context.surroundingText) contextParts.push(`Surrounding text: ${context.surroundingText}`);
+      if (contextParts.length > 0) {
+        bodyPayload.context = contextParts.join(". ");
+      }
+
+      const formalitySupported = [
+        "DE", "FR", "IT", "ES", "NL", "PL", "PT", "PT-PT", "PT-BR", "RU", "JA",
+      ].includes(targetLang);
+      if (formalitySupported && context.formality && context.formality !== "neutral") {
+        bodyPayload.formality = context.formality === "formal" ? "more" : "less";
+      }
+    }
 
     const response = await fetch(this.baseUrl, {
       method: "POST",
@@ -53,11 +78,7 @@ export class DeeplTranslationProvider implements ITranslationProvider {
         Authorization: `DeepL-Auth-Key ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        text: [text],
-        target_lang: targetLang,
-        source_lang: sourceLocale ? sourceLocale.toUpperCase().split("-")[0] : undefined,
-      }),
+      body: JSON.stringify(bodyPayload),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
 
@@ -102,7 +123,12 @@ export class OpenAiTranslationProvider implements ITranslationProvider {
       return { translatedText: req.text, translated: false, confidence: 0 };
     }
 
-    const { text, sourceLocale, targetLocale } = req;
+    const { text, sourceLocale, targetLocale, context } = req;
+    const contextPrompt = buildContextPrompt(context);
+    const systemContent = `You are a professional software localization system. Translate the given UI string from '${sourceLocale}' to '${targetLocale}'. Preserve all variables like {{var}}, {var}, \${var}, and ICU MessageFormat syntax exactly. Output ONLY the translated string without quotes, formatting, or commentary.${
+      contextPrompt ? `\n${contextPrompt}` : ""
+    }`;
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -114,7 +140,7 @@ export class OpenAiTranslationProvider implements ITranslationProvider {
         messages: [
           {
             role: "system",
-            content: `You are a professional software localization system. Translate the given UI string from '${sourceLocale}' to '${targetLocale}'. Preserve all variables like {{var}}, {var}, \${var}, and ICU MessageFormat syntax exactly. Output ONLY the translated string without quotes, formatting, or commentary.`,
+            content: systemContent,
           },
           {
             role: "user",
@@ -171,10 +197,13 @@ export class GeminiTranslationProvider implements ITranslationProvider {
       return { translatedText: req.text, translated: false, confidence: 0 };
     }
 
-    const { text, sourceLocale, targetLocale } = req;
+    const { text, sourceLocale, targetLocale, context } = req;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    const contextPrompt = buildContextPrompt(context);
 
-    const prompt = `You are a professional software localization engine. Translate the following software UI text from '${sourceLocale}' to '${targetLocale}'. Preserve all placeholders like {{var}}, {var}, \${var}, and ICU MessageFormat syntax exactly. Return ONLY the translated string with no surrounding quotes or extra commentary:\n\n${text}`;
+    const prompt = `You are a professional software localization engine. Translate the following software UI text from '${sourceLocale}' to '${targetLocale}'. Preserve all placeholders like {{var}}, {var}, \${var}, and ICU MessageFormat syntax exactly. Return ONLY the translated string with no surrounding quotes or extra commentary:${
+      contextPrompt ? `\n${contextPrompt}` : ""
+    }\n\n${text}`;
 
     const response = await fetch(url, {
       method: "POST",

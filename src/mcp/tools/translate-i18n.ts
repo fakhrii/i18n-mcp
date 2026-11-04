@@ -42,6 +42,30 @@ export const translateI18nSchema = {
     .string()
     .optional()
     .describe("Optional API key for the chosen cloud translation provider. If omitted, checks environment variables."),
+  glossary: z
+    .record(z.any())
+    .optional()
+    .describe(
+      "Optional brand glossary configuration with 'neverTranslate' brand names list and 'terms' dictionary (e.g. { neverTranslate: ['Antigravity'], terms: { Cart: 'Panier' } })."
+    ),
+  formality: z
+    .enum(["formal", "informal", "neutral"])
+    .optional()
+    .describe("Grammatical formality for AI/DeepL translations ('formal', 'informal', or 'neutral')."),
+  context: z
+    .object({
+      role: z.string().optional(),
+      componentName: z.string().optional(),
+      elementTag: z.string().optional(),
+      propName: z.string().optional(),
+      filePath: z.string().optional(),
+      description: z.string().optional(),
+      formality: z.enum(["formal", "informal", "neutral"]).optional(),
+      maxLength: z.number().optional(),
+      surroundingText: z.string().optional(),
+    })
+    .optional()
+    .describe("Contextual clues to guide LLM translation (role, component, element tag, character limits, notes)."),
 };
 
 export function registerTranslateI18nTool(server: McpServer): void {
@@ -58,6 +82,9 @@ export function registerTranslateI18nTool(server: McpServer): void {
       providedTranslations,
       provider,
       apiKey,
+      glossary,
+      formality,
+      context,
     }) => {
       logger.info(
         `Invoking translate_i18n (dryRun=${dryRun ?? false}, projectPath=${projectPath}, provider=${provider || "auto"})`
@@ -72,6 +99,9 @@ export function registerTranslateI18nTool(server: McpServer): void {
           providedTranslations,
           provider,
           apiKey,
+          glossary,
+          formality,
+          context,
         });
 
         const summaryText = [

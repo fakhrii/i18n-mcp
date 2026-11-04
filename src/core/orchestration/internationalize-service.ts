@@ -299,6 +299,8 @@ export async function internationalizeProject(
         providedTranslations: input.providedTranslations,
         provider: input.provider,
         apiKey: input.apiKey,
+        formality: input.formality,
+        context: input.context,
       });
 
       transMeta = {
