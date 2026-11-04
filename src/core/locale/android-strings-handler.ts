@@ -53,6 +53,24 @@ function escapeAndroidString(str: string): string {
     .replace(/"/g, '\\"');
 }
 
+function extractPrecedingComment(xml: string, matchIndex: number): string | undefined {
+  const preText = xml.slice(0, matchIndex);
+  const lastCommentEnd = preText.lastIndexOf("-->");
+  if (lastCommentEnd !== -1) {
+    const afterComment = preText.slice(lastCommentEnd + 3);
+    if (/^\s*$/.test(afterComment)) {
+      const lastCommentStart = preText.lastIndexOf("<!--", lastCommentEnd);
+      if (lastCommentStart !== -1) {
+        const commentContent = preText.slice(lastCommentStart + 4, lastCommentEnd);
+        if (!commentContent.includes("<string") && !commentContent.includes("<plurals")) {
+          return commentContent.trim();
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Parses an Android strings.xml XML string into an AndroidCatalog.
  */
@@ -65,19 +83,11 @@ export function parseAndroidStrings(xml: string): AndroidCatalog {
   let match: RegExpExecArray | null;
 
   while ((match = stringRegex.exec(xml)) !== null) {
-    const matchIndex = match.index;
     const name = match[1]!;
     const attrs = match[2] || "";
     const rawVal = match[3] || "";
 
-    // Check if there is a comment immediately preceding this tag (with only whitespace in-between)
-    let comment: string | undefined;
-    const preText = xml.slice(0, matchIndex);
-    const commentMatch = /<!--([\s\S]*?)-->\s*$/.exec(preText);
-    if (commentMatch && !commentMatch[1]!.includes("<string") && !commentMatch[1]!.includes("<plurals")) {
-      comment = commentMatch[1]!.trim();
-    }
-
+    const comment = extractPrecedingComment(xml, match.index);
     const translatable = !attrs.includes('translatable="false"');
     const value = unescapeAndroidString(rawVal);
 
@@ -92,16 +102,10 @@ export function parseAndroidStrings(xml: string): AndroidCatalog {
   // Extract <plurals name="...">...</plurals>
   const pluralsRegex = /<plurals\s+name=["']([^"']+)["']>([\s\S]*?)<\/plurals>/gi;
   while ((match = pluralsRegex.exec(xml)) !== null) {
-    const matchIndex = match.index;
     const name = match[1]!;
     const body = match[2] || "";
 
-    let comment: string | undefined;
-    const preText = xml.slice(0, matchIndex);
-    const commentMatch = /<!--([\s\S]*?)-->\s*$/.exec(preText);
-    if (commentMatch && !commentMatch[1]!.includes("<string") && !commentMatch[1]!.includes("<plurals")) {
-      comment = commentMatch[1]!.trim();
-    }
+    const comment = extractPrecedingComment(xml, match.index);
 
     const items: Record<string, string> = {};
     const itemRegex = /<item\s+quantity=["']([^"']+)["']>([\s\S]*?)<\/item>/gi;

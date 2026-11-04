@@ -1,5 +1,5 @@
 {
-  "name": "i18n-mcp",
+  "name": "@fakhrii/i18n-mcp",
   "version": "0.1.4",
   "description": "Production-quality MCP server for automated internationalization across React Native, React (web), Next.js, Flutter, and Angular projects",
   "type": "module",
@@ -11,6 +11,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
