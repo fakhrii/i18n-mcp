@@ -1,0 +1,25 @@
+{
+  "name": "i18n-mcp",
+  "displayName": "Multi-Framework i18n",
+  "version": "0.1.4",
+  "description": "Production-quality MCP server & skill for automated internationalization across React Native, React (web), Next.js, Flutter, and Angular projects.",
+  "author": {
+    "name": "Fakhreddine Kraiem"
+  },
+  "license": "MIT",
+  "suggestedPrompts": [
+    "Scan this project for hardcoded user-facing strings and internationalize them",
+    "Audit translation catalogs for missing CLDR plurals and auto-fix them",
+    "Audit RTL layout properties and auto-migrate physical to logical"
+  ],
+  "keywords": [
+    "mcp",
+    "i18n",
+    "internationalization",
+    "react-native",
+    "react",
+    "nextjs",
+    "flutter",
+    "angular"
+  ]
+}

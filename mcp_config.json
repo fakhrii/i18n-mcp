@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "i18n-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@fakhrii/i18n-mcp",
+        "serve"
+      ]
+    }
+  }
+}

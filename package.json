@@ -9,7 +9,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "skills",
+    "plugin.json",
+    "mcp_config.json"
   ],
   "publishConfig": {
     "access": "public"
