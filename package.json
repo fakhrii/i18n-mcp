@@ -1,6 +1,6 @@
 {
   "name": "@fakhrii/i18n-mcp",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Production-quality MCP server for automated internationalization across React Native, React (web), Next.js, Flutter, and Angular projects",
   "type": "module",
   "bin": {
@@ -15,7 +15,8 @@
     "mcp_config.json"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsc",

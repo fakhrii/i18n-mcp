@@ -20,6 +20,22 @@ program
   });
 
 program
+  .command("init")
+  .description("Initialize i18n skills and MCP configuration for AI coding agents (Antigravity, Claude, Cursor)")
+  .argument("[path]", "Path to project root (defaults to current directory)", ".")
+  .option("-g, --global", "Install globally across all projects (~/.gemini/config/)", false)
+  .option("-c, --client <client>", "Target client: all, antigravity, claude, cursor", "all")
+  .option("-f, --force", "Overwrite existing skills and configuration", false)
+  .action(async (projectPath: string, options: { global: boolean; client: string; force: boolean }) => {
+    const { runInit } = await import("./init.js");
+    await runInit(projectPath, {
+      global: options.global,
+      client: options.client as "all" | "antigravity" | "claude" | "cursor",
+      force: options.force,
+    });
+  });
+
+program
   .command("analyze")
   .description("Analyze project structure, existing i18n configuration, and namespaces")
   .argument("[path]", "Path to project root (defaults to current directory)", ".")
