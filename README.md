@@ -1,4 +1,4 @@
-# Multi-Framework i18n MCP Server (`i18n-mcp`)
+# Multi-Framework i18n MCP Server (`@fakhrii/i18n-mcp`)
 
 Production-quality Model Context Protocol (MCP) server for automated internationalization across **React Native**, **React (web)**, **Next.js**, **Flutter**, and **Angular** projects.
 
@@ -16,6 +16,30 @@ Designed for AI coding agents (Antigravity, Claude Code, Cursor, Gemini CLI, etc
 | **Flutter** | Dart | `Text()`, `SelectableText()`, `TextField(decoration:)`, `SnackBar()`, `AppBar(title:)` | `flutter_localizations`, `intl`, ARB |
 | **Angular** | TypeScript, HTML | HTML templates (`.html` and inline), Angular Material (`mat-card-title`, `mat-hint`), `SnackBar.open()`, `title`, `placeholder`, `aria-label` | `@ngx-translate/core`, `@angular/localize`, `transloco` |
 | **Vue / Nuxt** | TypeScript, JavaScript, Vue SFC | `<template>` text sinks, `router-link`, `nuxt-link`, `el-button`, `v-btn`, `title`, `placeholder`, `aria-label`, `toast` | `vue-i18n`, `@nuxtjs/i18n` |
+
+---
+
+## ⚡ Quick Start: 1-Click Agent Setup
+
+Initialize the MCP server and `/internationalize` skills for your AI coding agent (**Antigravity**, **Claude Code**, **Cursor**) in a single command:
+
+### 1. In your current project (Per-Project)
+```bash
+npx -y @fakhrii/i18n-mcp init
+```
+This automatically:
+- Scaffolds `.agents/skills/internationalize/SKILL.md` (for **Antigravity** & **Gemini CLI**).
+- Scaffolds `.claude/skills/internationalize/SKILL.md` (for **Claude Code**).
+- Configures `.cursor/mcp.json` (for **Cursor IDE**).
+
+### 2. Globally across all projects (Recommended)
+```bash
+npx -y @fakhrii/i18n-mcp init --global
+```
+This automatically:
+- Installs the skill into `~/.gemini/config/skills/internationalize/SKILL.md` (active across **all** Antigravity projects).
+- Registers the MCP server in `~/.gemini/config/mcp_config.json`.
+- Configures **Claude Desktop** (`claude_desktop_config.json`).
 
 ---
 
@@ -239,22 +263,57 @@ The project includes an Antigravity Workspace Skill located at [`.agents/skills/
 
 ---
 
-## Running the MCP Server
+## Running the MCP Server Manually
 
-### Stdio Transport Configuration
+If you prefer to configure your MCP client manually instead of running `npx @fakhrii/i18n-mcp init`:
 
-Add the server to your MCP client configuration (Claude Desktop, Cursor, Gemini CLI, etc.):
+### Google Antigravity / Gemini CLI (`mcp_config.json`)
+Add to `~/.gemini/config/mcp_config.json` (global) or `.agents/mcp_config.json` (project):
 
 ```json
 {
   "mcpServers": {
-    "react-native-i18n": {
-      "command": "node",
-      "args": ["<path-to-i18n-mcp>/dist/mcp/server.js"]
+    "i18n-mcp": {
+      "command": "npx",
+      "args": ["-y", "@fakhrii/i18n-mcp", "serve"]
     }
   }
 }
 ```
+
+### Claude Desktop (`claude_desktop_config.json`)
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "i18n-mcp": {
+      "command": "npx",
+      "args": ["-y", "@fakhrii/i18n-mcp", "serve"]
+    }
+  }
+}
+```
+
+### Cursor IDE (`.cursor/mcp.json`)
+Add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "i18n-mcp": {
+      "command": "npx",
+      "args": ["-y", "@fakhrii/i18n-mcp", "serve"]
+    }
+  }
+}
+```
+
+### VS Code (Cline / Roo Code / Continue.dev)
+Configure the MCP server:
+- **Command**: `npx`
+- **Args**: `["-y", "@fakhrii/i18n-mcp", "serve"]`
 
 ---
 
@@ -275,45 +334,57 @@ npm run typecheck
 
 ## CLI Usage
 
-For debugging and local development without an MCP client:
+For setup, debugging, and terminal automation:
 
 ```bash
+# 1-Click setup of skills & MCP config for AI agents (Antigravity, Claude, Cursor)
+npx -y @fakhrii/i18n-mcp init
+
+# Setup globally across all projects on your machine
+npx -y @fakhrii/i18n-mcp init --global
+
+# Target a specific client (all | antigravity | claude | cursor)
+npx -y @fakhrii/i18n-mcp init --client antigravity
+
+# Force overwrite existing configuration
+npx -y @fakhrii/i18n-mcp init --force
+
 # Scan hardcoded strings in current project
-npx i18n-mcp scan
+npx -y @fakhrii/i18n-mcp scan
 
 # Scan specific project directory
-npx i18n-mcp scan ./my-project
+npx -y @fakhrii/i18n-mcp scan ./my-project
 
 # Scan with scope (e.g. specific feature or file)
-npx i18n-mcp scan ./my-project --scope src/features/auth
+npx -y @fakhrii/i18n-mcp scan ./my-project --scope src/features/auth
 
 # Export catalogs to standard XLIFF (1.2 / 2.0) or TMX for translation agencies
-npx i18n-mcp export ./my-project --format xliff-1.2 --target-locales fr es de --out ./exports
+npx -y @fakhrii/i18n-mcp export ./my-project --format xliff-1.2 --target-locales fr es de --out ./exports
 
 # Import translated XLIFF or TMX files back into catalogs
-npx i18n-mcp import ./my-project --file ./exports/en_fr.xlf
+npx -y @fakhrii/i18n-mcp import ./my-project --file ./exports/en_fr.xlf
 
 # Audit catalogs for exact and fuzzy duplicate keys and consolidate redundancies
-npx i18n-mcp dedupe ./my-project --threshold 0.85 --consolidate
+npx -y @fakhrii/i18n-mcp dedupe ./my-project --threshold 0.85 --consolidate
 
 # Audit and migrate unlocalized currency, number, percentage, and date formatting
-npx i18n-mcp formatting ./my-project --categories CURRENCY NUMBER PERCENTAGE DATE --fix
+npx -y @fakhrii/i18n-mcp formatting ./my-project --categories CURRENCY NUMBER PERCENTAGE DATE --fix
 
 # Audit and scaffold Unicode CLDR plural categories across catalogs
-npx i18n-mcp plurals ./my-project --locales ar ru pl --fix
+npx -y @fakhrii/i18n-mcp plurals ./my-project --locales ar ru pl --fix
 
 # Audit RTL layout and auto-fix physical properties to logical
-npx i18n-mcp rtl ./my-project --target-locales ar he --fix
+npx -y @fakhrii/i18n-mcp rtl ./my-project --target-locales ar he --fix
 
 # Translate missing keys with context-aware formality
-npx i18n-mcp translate ./my-project --target-locales fr es --formality formal --provider openai
+npx -y @fakhrii/i18n-mcp translate ./my-project --target-locales fr es --formality formal --provider openai
 
 # Generate TypeScript type definitions (resources.d.ts)
-npx i18n-mcp types ./my-project
+npx -y @fakhrii/i18n-mcp types ./my-project
 
 # Preview generated types without writing
-npx i18n-mcp types ./my-project --dry-run
+npx -y @fakhrii/i18n-mcp types ./my-project --dry-run
 
 # Output raw JSON
-npx i18n-mcp scan ./my-project --json
+npx -y @fakhrii/i18n-mcp scan ./my-project --json
 ```

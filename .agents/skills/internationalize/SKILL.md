@@ -74,7 +74,7 @@ Determine the arguments:
 Call the MCP tool:
 ```json
 {
-  "ServerName": "react-native-i18n",
+  "ServerName": "i18n-mcp",
   "ToolName": "internationalize",
   "Arguments": {
     "scope": ["<target-paths>"],
@@ -116,7 +116,7 @@ If the developer replies with confirmation (e.g. "apply", "proceed", "yes, apply
 The tool supports optional cloud translation providers (`deepl`, `openai`, `gemini`) which are **non-blocking** (seamlessly falling back to local offline dictionaries if keys are not provided or network fails), as well as direct agent-provided translations via `providedTranslations`:
 ```json
 {
-  "ServerName": "react-native-i18n",
+  "ServerName": "i18n-mcp",
   "ToolName": "internationalize",
   "Arguments": {
     "scope": ["<target-paths>"],
