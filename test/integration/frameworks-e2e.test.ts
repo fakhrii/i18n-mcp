@@ -168,9 +168,9 @@ class MyApp extends StatelessWidget {
       expect(parsedArb["@@locale"]).toBe("en");
       expect(parsedArb["appTitle"]).toBe("Existing App Title"); // preserved
       expect(parsedArb["dashboardOverview"]).toBe("Dashboard Overview");
-      expect(parsedArb["@dashboardOverview"]).toBeDefined();
+      expect(parsedArb["@dashboardOverview"]).toBeUndefined();
       expect(parsedArb["welcomeBackToYourAccount"]).toBe("Welcome back to your account");
-      expect(parsedArb["@welcomeBackToYourAccount"]).toBeDefined();
+      expect(parsedArb["@welcomeBackToYourAccount"]).toBeUndefined();
 
       // Verify main.dart updated
       const updatedDart = await readTextFile(path.join(tempDir, "lib", "main.dart"));

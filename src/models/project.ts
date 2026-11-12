@@ -15,6 +15,7 @@ export type I18nLibraryType =
   | "i18next"
   | "next-intl"
   | "flutter_localizations"
+  | "flutter_intl"
   | "easy_localization"
   | "@ngx-translate/core"
   | "ngx-translate"
@@ -29,6 +30,16 @@ export type I18nLibraryType =
 
 export type I18nStructureType = "namespaces" | "nested" | "flat";
 
+export interface FlutterI18nConfig {
+  engine: "flutter_intl" | "gen-l10n" | "custom";
+  className: string;
+  accessor: string;
+  noContextAccessor?: string;
+  arbPrefix: string;
+  arbDir: string;
+  importStatement: string;
+}
+
 export interface I18nDetection {
   library: I18nLibraryType;
   detected: boolean;
@@ -38,6 +49,7 @@ export interface I18nDetection {
   configFile?: string;
   needsSetup?: boolean;
   structureType?: I18nStructureType;
+  flutterConfig?: FlutterI18nConfig;
 }
 
 export interface ProjectStructure {
@@ -64,4 +76,5 @@ export interface ProjectAnalysis {
   accessPatterns: string[];
   warnings: ConfigWarning[];
   structureType: I18nStructureType;
+  flutterConfig?: FlutterI18nConfig;
 }

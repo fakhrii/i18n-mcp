@@ -60,6 +60,40 @@ Can be explicitly overridden via `--structure=nested`, `--structure=namespaces`,
 
 ---
 
+## Flutter & Dart Architecture Support
+
+The migration engine automatically inspects the Flutter project setup and adapts code transformation and ARB catalog generation:
+
+1. **i18n Engine Detection**:
+   - **`flutter_intl` (`intl_utils`)**: Detected via `pubspec.yaml` (under `flutter_intl:` or dependencies).
+     - Localization Accessor: uses `Localized.of(context)` / `Localized.current` or `S.of(context)` / `S.current` (matching the project's configured class name or existing usage).
+     - Catalogs: reads and updates `intl_<locale>.arb` (e.g., `intl_en.arb`, `intl_ar.arb`).
+     - Imports: injects `import 'package:<app_package>/generated/l10n.dart';`.
+   - **Flutter `gen-l10n` (standard)**: Detected via `l10n.yaml` or default Flutter setup.
+     - Localization Accessor: uses `AppLocalizations.of(context)!`.
+     - Catalogs: reads and updates `app_<locale>.arb` (e.g., `app_en.arb`, `app_ar.arb`).
+     - Imports: injects `import 'package:flutter_gen/gen_l10n/app_localizations.dart';`.
+
+2. **UI vs Non-UI Context Detection**:
+   - **UI Widgets / State**: When `BuildContext context` is present, transforms to `<Class>.of(context).<key>`.
+   - **Controllers, ViewModels, Services, BLoCs**: When `BuildContext` is not available, automatically falls back to `<Class>.current.<key>` (or `S.current.<key>`), preventing compile errors.
+
+3. **Const Modifiers & Collections**:
+   - Strips `const` keyword from enclosing constructors (e.g. `const Text(...)` $\rightarrow$ `Text(...)`).
+   - Automatically converts `static const Map<String, String>` and `const map = { ... }` containing runtime localizations into `static final` and `final` declarations when inside UI controllers.
+
+4. **Context & Architecture Guardrails (Preventing Runtime Exceptions)**:
+   - **Non-UI Architecture Exclusion**: Non-UI Clean Architecture layers (`data/`, `domain/`, `constants/`, `models/`, `entities/`, `datasources/`, `repositories/`, `network/`, `services/`, `storage/`, `di/`, `migration/`) and files matching `*_constants.dart`, `*_model.dart`, `*_datasource*.dart`, `*_repository*.dart`, `*_strategy.dart` are strictly protected and never extracted for UI localization.
+   - **Top-Level & Static Guard**: Top-level variables (`final String x = ...;`), static class fields (`static const ...`, `static final ...`), and class field initializers (`final String x = ...;`) outside method bodies are never extracted. In Dart, evaluating `Localized.current` at class or library load time causes runtime startup crashes (`Null check operator used on a null value` or `LateInitializationError: Field '_current' has not been initialized`).
+   - **Constructor Defaults Guard**: Constructor/method parameter defaults (`{this.title = 'Default'}`) must remain compile-time constants in Dart and are strictly skipped.
+   - **Scoped to Genuine UI**: Localization is confined to genuine UI contexts with `BuildContext context` (`Localized.of(context)`) or runtime presentation controller methods (`Localized.current`).
+
+5. **Complex String Interpolations**:
+   - Parses Dart `${...}` expressions with nested strings, ternaries, and method calls without premature truncation.
+   - Extracts ICU parameters into ARB metadata with placeholders.
+
+---
+
 ## Agent Execution Steps
 
 ### Step 1: Parse User Input and Scope

@@ -65,6 +65,8 @@ export interface DetectedString {
   };
   isRichText?: boolean;
   richTextComponents?: Record<string, string>;
+  hasBuildContext?: boolean;
+  isInsideConst?: boolean;
 }
 
 export interface ScanOptions {

@@ -10,6 +10,7 @@ export interface LocalePlanningContext {
   isSubdirStructure: boolean; // true if locales/<locale>/<ns>.json, false if locales/<locale>.json
   existingTargetTranslations?: Map<string, Map<string, Map<string, string>>>; // locale -> ns -> key -> val
   isArb?: boolean;
+  arbPrefix?: string;
 }
 
 /**
@@ -20,7 +21,8 @@ export function getLocaleFilePath(
   locale: string,
   namespace: string,
   isSubdirStructure = true,
-  isArb = false
+  isArb = false,
+  arbPrefix?: string
 ): string {
   const isFlutterArb =
     isArb ||
@@ -30,14 +32,8 @@ export function getLocaleFilePath(
     Boolean(localeDirectory && localeDirectory.includes("l10n"));
 
   if (isFlutterArb) {
-    let arbName: string;
-    if (namespace.endsWith(".arb")) {
-      arbName = namespace;
-    } else if (namespace.startsWith("app_") || namespace.startsWith("intl_")) {
-      arbName = `${namespace}.arb`;
-    } else {
-      arbName = `app_${locale}.arb`;
-    }
+    const prefix = arbPrefix ?? (namespace.startsWith("intl_") ? "intl_" : namespace.startsWith("app_") ? "app_" : "app_");
+    const arbName = `${prefix}${locale}.arb`;
     return localeDirectory
       ? toPosixPath(path.join(localeDirectory, arbName))
       : toPosixPath(path.join("lib/l10n", arbName));
@@ -69,7 +65,9 @@ export function planTargetLocales(
       context.localeDirectory,
       locale,
       namespace,
-      context.isSubdirStructure
+      context.isSubdirStructure,
+      context.isArb,
+      context.arbPrefix
     );
 
     const existingVal = context.existingTargetTranslations

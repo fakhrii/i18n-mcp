@@ -85,4 +85,47 @@ describe("Phase P2: Flutter ARB Handler", () => {
     expect(parsed["@itemCount"]).toBeDefined();
     expect(result.translationEntriesCreated).toBe(1);
   });
+  it("only generates @metadata block for keys with variables (plain strings omit @key)", () => {
+    const arb = parseArb(`{\n  "@@locale": "en"\n}`);
+
+    // Plain string without variables -> NO @key metadata
+    setArbEntry(arb, "welcomeTitle", "Welcome to Dukhan Bank");
+    setArbEntry(arb, "submitButton", "Submit");
+
+    // String with variable -> HAS @key metadata
+    setArbEntry(arb, "userGreeting", "Hello {userName}");
+
+    // ICU Plural -> HAS @key metadata
+    setArbEntry(arb, "unreadCount", "{count, plural, =1{1 unread message} other{{count} unread messages}}");
+
+    expect(arb.keyMetadata.get("welcomeTitle")).toBeUndefined();
+    expect(arb.keyMetadata.get("submitButton")).toBeUndefined();
+    expect(arb.keyMetadata.get("userGreeting")).toBeDefined();
+    expect(arb.keyMetadata.get("unreadCount")).toBeDefined();
+
+    const serialized = serializeArb(arb);
+    const parsed = JSON.parse(serialized);
+
+    expect(parsed.welcomeTitle).toBe("Welcome to Dukhan Bank");
+    expect(parsed["@welcomeTitle"]).toBeUndefined();
+
+    expect(parsed.submitButton).toBe("Submit");
+    expect(parsed["@submitButton"]).toBeUndefined();
+
+    expect(parsed.userGreeting).toBe("Hello {userName}");
+    expect(parsed["@userGreeting"]).toEqual({
+      description: "Translation for userGreeting",
+      placeholders: {
+        userName: { type: "String" },
+      },
+    });
+
+    expect(parsed.unreadCount).toBe("{count, plural, =1{1 unread message} other{{count} unread messages}}");
+    expect(parsed["@unreadCount"]).toEqual({
+      description: "Translation for unreadCount",
+      placeholders: {
+        count: { type: "num", format: "compact" },
+      },
+    });
+  });
 });

@@ -4,6 +4,7 @@ import type {
   I18nLibraryType,
   I18nStructureType,
   ConfigWarning,
+  FlutterI18nConfig,
 } from "../../models/project.js";
 import type { I18nMcpConfig } from "../../models/config.js";
 import {
@@ -61,6 +62,7 @@ export interface I18nDiscoveryResult {
   accessPatterns: string[];
   warnings: ConfigWarning[];
   structureType: I18nStructureType;
+  flutterConfig?: FlutterI18nConfig;
 }
 
 export interface CodeI18nConfig {
@@ -189,14 +191,66 @@ export async function detectI18n(
 
   // 1. Detect Library
   let library: I18nLibraryType = "none";
+  let detectedFlutterClassName: string | undefined;
+  let detectedFlutterPrefix: string | undefined;
+  let detectedFlutterImport: string | undefined;
+  let flutterPackageName: string | undefined;
+
+  // Flutter inspection via pubspec.yaml
+  const pubspecPath = path.join(projectRoot, "pubspec.yaml");
+  if (await fileExists(pubspecPath)) {
+    const pubspecText = (await readTextFile(pubspecPath)) || "";
+    const nameMatch = pubspecText.match(/^name:\s*([a-zA-Z0-9_-]+)/m);
+    if (nameMatch) {
+      flutterPackageName = nameMatch[1];
+    }
+
+    if (pubspecText.includes("flutter_intl") || pubspecText.includes("intl_utils")) {
+      library = "flutter_intl";
+    }
+
+    const flutterIntlMatch = pubspecText.match(/flutter_intl:\s*([\s\S]*?)(?:\n[a-zA-Z0-9_]+:|$)/);
+    if (flutterIntlMatch) {
+      library = "flutter_intl";
+      const block = flutterIntlMatch[1] || "";
+      const classMatch = block.match(/class_name:\s*([a-zA-Z0-9_]+)/);
+      if (classMatch) {
+        detectedFlutterClassName = classMatch[1];
+      }
+    }
+  }
+
+  const l10nYamlPath = path.join(projectRoot, "l10n.yaml");
+  if (await fileExists(l10nYamlPath)) {
+    const l10nText = (await readTextFile(l10nYamlPath)) || "";
+    if (library === "none") {
+      library = "flutter_localizations";
+    }
+    const classMatch = l10nText.match(/output-class:\s*([a-zA-Z0-9_]+)/);
+    if (classMatch) {
+      detectedFlutterClassName = classMatch[1];
+    }
+    const templateMatch = l10nText.match(/template-arb-file:\s*([^\r\n#]+)/);
+    if (templateMatch) {
+      const tmpl = templateMatch[1]!.trim();
+      if (tmpl.startsWith("intl_")) detectedFlutterPrefix = "intl_";
+      else if (tmpl.startsWith("app_")) detectedFlutterPrefix = "app_";
+      else detectedFlutterPrefix = "";
+    }
+  }
+
   if (userConfig?.library) {
     library = userConfig.library;
   } else if ("react-i18next" in allDependencies) {
     library = "react-i18next";
   } else if ("i18next" in allDependencies) {
     library = "i18next";
+  } else if ("flutter_intl" in allDependencies || "intl_utils" in allDependencies) {
+    library = "flutter_intl";
   } else if ("flutter_localizations" in allDependencies) {
-    library = "flutter_localizations";
+    if (library === "none") {
+      library = "flutter_localizations";
+    }
   } else if ("@ngx-translate/core" in allDependencies || "ngx-translate" in allDependencies) {
     library = "@ngx-translate/core";
   } else if ("@angular/localize" in allDependencies) {
@@ -330,7 +384,7 @@ export async function detectI18n(
         localeNamespacesMap.set(localeName, nsSet);
       }
     } else {
-      // Check for single file per locale: locales/<locale>.json
+      // Check for single file per locale: locales/<locale>.json or .arb files
       const files = await listFiles(fullLocalePath);
       for (const f of files) {
         if (f.endsWith(".arb")) {
@@ -338,6 +392,12 @@ export async function detectI18n(
           if (library === "none") {
             library = "flutter_localizations";
           }
+          if (f.startsWith("intl_") && !detectedFlutterPrefix) {
+            detectedFlutterPrefix = "intl_";
+          } else if (f.startsWith("app_") && !detectedFlutterPrefix) {
+            detectedFlutterPrefix = "app_";
+          }
+
           const rawName = path.basename(f, ".arb");
           const localeName = rawName.replace(/^(app_|intl_)/, "") || rawName;
           detectedLocales.push(localeName);
@@ -447,16 +507,54 @@ export async function detectI18n(
     "**/__tests__/**",
     "**/*.test.*",
     "**/*.spec.*",
+    "**/.dart_tool/**",
+    "**/generated/**",
   ]);
 
-  const sampleFiles = sourceFiles.slice(0, 30);
+  const sampleFiles = sourceFiles.slice(0, 40);
   for (const relPath of sampleFiles) {
     const content = await readTextFile(path.join(projectRoot, relPath));
     if (!content) continue;
 
+    // Flutter Dart access patterns
+    if (content.includes("Localized.of") || content.includes("Localized.current")) {
+      accessPatterns.add("Localized");
+      if (content.includes("Localized.current")) {
+        accessPatterns.add("Localized.current");
+      }
+      if (!detectedFlutterClassName) {
+        detectedFlutterClassName = "Localized";
+      }
+      if (library === "none" || library === "flutter_localizations") {
+        library = "flutter_intl";
+      }
+    }
+    if (/\bS\.of\s*\(/.test(content) || /\bS\.current\b/.test(content)) {
+      accessPatterns.add("S");
+      if (/\bS\.current\b/.test(content)) {
+        accessPatterns.add("S.current");
+      }
+      if (!detectedFlutterClassName) {
+        detectedFlutterClassName = "S";
+      }
+      if (library === "none" || library === "flutter_localizations") {
+        library = "flutter_intl";
+      }
+    }
     if (content.includes("AppLocalizations.of") || /\bl10n\./.test(content)) {
       accessPatterns.add("AppLocalizations");
+      if (!detectedFlutterClassName) {
+        detectedFlutterClassName = "AppLocalizations";
+      }
     }
+
+    const flutterImportMatch = content.match(
+      /import\s+['"](package:[^'"]+\/(?:generated\/l10n|l10n\/app_localizations)\.dart)['"]/
+    );
+    if (flutterImportMatch && !detectedFlutterImport) {
+      detectedFlutterImport = flutterImportMatch[1];
+    }
+
     if (content.includes("useTranslation")) {
       accessPatterns.add("useTranslation");
       if (/useTranslation\(\s*['"\[]/.test(content)) {
@@ -519,7 +617,6 @@ export async function detectI18n(
       structureType = "namespaces";
     }
   } else {
-    // Greenfield or no locale directory yet
     if (accessPatterns.has("t:dot") && !accessPatterns.has("t:colon")) {
       structureType = "nested";
     } else {
@@ -539,6 +636,43 @@ export async function detectI18n(
     });
   }
 
+  let flutterConfig: FlutterI18nConfig | undefined;
+  if (library === "flutter_intl" || library === "flutter_localizations" || hasArbFiles) {
+    const isIntl =
+      library === "flutter_intl" ||
+      accessPatterns.has("Localized") ||
+      accessPatterns.has("S");
+    const engine = isIntl ? "flutter_intl" : "gen-l10n";
+
+    let finalClass = detectedFlutterClassName;
+    if (!finalClass) {
+      if (accessPatterns.has("Localized")) finalClass = "Localized";
+      else if (accessPatterns.has("S")) finalClass = "S";
+      else if (isIntl) finalClass = "S";
+      else finalClass = "AppLocalizations";
+    }
+
+    const finalPrefix = detectedFlutterPrefix ?? (isIntl ? "intl_" : "app_");
+    const finalDir = localeDirectory || "lib/l10n";
+    const finalImport =
+      (detectedFlutterImport ? `import '${detectedFlutterImport}';` : undefined) ||
+      (isIntl
+        ? flutterPackageName
+          ? `import 'package:${flutterPackageName}/generated/l10n.dart';`
+          : `import 'generated/l10n.dart';`
+        : "import 'package:flutter_gen/gen_l10n/app_localizations.dart';");
+
+    flutterConfig = {
+      engine,
+      className: finalClass,
+      accessor: isIntl ? `${finalClass}.of(context)` : `${finalClass}.of(context)!`,
+      noContextAccessor: isIntl ? `${finalClass}.current` : undefined,
+      arbPrefix: finalPrefix,
+      arbDir: finalDir,
+      importStatement: finalImport,
+    };
+  }
+
   return {
     i18n: {
       library,
@@ -549,10 +683,12 @@ export async function detectI18n(
       ...(configFile ? { configFile } : {}),
       needsSetup,
       structureType,
+      flutterConfig,
     },
     namespaces: Array.from(namespacesSet).sort(),
     accessPatterns: Array.from(accessPatterns).sort(),
     warnings,
     structureType,
+    flutterConfig,
   };
 }

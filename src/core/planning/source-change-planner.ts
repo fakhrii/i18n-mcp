@@ -1,6 +1,6 @@
 import type { DetectedString } from "../../models/scanner.js";
 import type { CodeChange, SourceChangePlan } from "../../models/plan.js";
-import type { I18nStructureType } from "../../models/project.js";
+import type { I18nStructureType, FlutterI18nConfig } from "../../models/project.js";
 
 export interface FileTranslationContext {
   filePath: string;
@@ -9,11 +9,13 @@ export interface FileTranslationContext {
   hasI18nImport: boolean;
   hasUseTranslationCall?: boolean;
   hasAppLocalizationsImport?: boolean;
+  hasFlutterImport?: boolean;
   hasL10nAccessor?: boolean;
   hasTranslateServiceImport?: boolean;
   boundNamespaces: string[];
   accessPattern: "useTranslation" | "i18n.t" | "translate.instant" | "custom" | "none";
   i18nLibrary?: string;
+  flutterConfig?: FlutterI18nConfig;
 }
 
 /**
@@ -22,7 +24,8 @@ export interface FileTranslationContext {
 export function analyzeFileTranslationContext(
   fileContent: string,
   projectAccessPattern: string = "useTranslation",
-  _i18nLibrary: string = "react-i18next"
+  _i18nLibrary: string = "react-i18next",
+  flutterConfig?: FlutterI18nConfig
 ): FileTranslationContext {
   // Strip comments so commented-out imports don't lead to false positives
   const strippedContent = fileContent
@@ -47,6 +50,12 @@ export function analyzeFileTranslationContext(
   const hasAppLocalizationsImport =
     strippedContent.includes("app_localizations.dart") ||
     strippedContent.includes("AppLocalizations");
+
+  const hasFlutterImport =
+    hasAppLocalizationsImport ||
+    strippedContent.includes("generated/l10n.dart") ||
+    (flutterConfig?.className ? strippedContent.includes(flutterConfig.className) : false);
+
   const hasL10nAccessor =
     /\bfinal\s+l10n\s*=/.test(strippedContent) ||
     /\bvar\s+l10n\s*=/.test(strippedContent) ||
@@ -104,11 +113,13 @@ export function analyzeFileTranslationContext(
     hasI18nImport,
     hasUseTranslationCall,
     hasAppLocalizationsImport,
+    hasFlutterImport,
     hasL10nAccessor,
     hasTranslateServiceImport,
     boundNamespaces,
     accessPattern,
     i18nLibrary: _i18nLibrary,
+    flutterConfig,
   };
 }
 
@@ -124,7 +135,19 @@ export function buildReplacementExpression(
 ): string {
   // Dart Flutter replacement syntax
   if (item.file?.endsWith(".dart") || fileContext.filePath?.endsWith(".dart")) {
-    const accessor = fileContext.hasL10nAccessor ? "l10n" : "AppLocalizations.of(context)!";
+    let accessor: string;
+    if (fileContext.hasL10nAccessor) {
+      accessor = "l10n";
+    } else if (item.hasBuildContext === false && fileContext.flutterConfig?.noContextAccessor) {
+      accessor = fileContext.flutterConfig.noContextAccessor;
+    } else if (fileContext.flutterConfig?.accessor) {
+      accessor = fileContext.flutterConfig.accessor;
+    } else if (fileContext.i18nLibrary === "flutter_intl") {
+      accessor = item.hasBuildContext === false ? "S.current" : "S.of(context)";
+    } else {
+      accessor = "AppLocalizations.of(context)!";
+    }
+
     if (item.variables && item.variables.length > 0) {
       const vars = item.variables.map((v) => {
         const expr = item.variableExpressions?.[v];
@@ -200,8 +223,6 @@ export function buildReplacementExpression(
   } else {
     // In namespaces structure:
     // Determine if namespace prefix is required:
-    // In react-i18next, useTranslation(["ns1", "ns2"]) designates the FIRST namespace as default.
-    // Any secondary namespace requires prefixing as `${namespace}:${key}`.
     const isPrimaryNs =
       fileContext.boundNamespaces.length > 0 &&
       fileContext.boundNamespaces[0] === namespace;
@@ -281,11 +302,19 @@ export function determineRequiredCodeChanges(
   }
 
   if (fileContext.filePath?.endsWith(".dart")) {
-    if (!fileContext.hasAppLocalizationsImport) {
+    if (!fileContext.hasFlutterImport && !fileContext.hasAppLocalizationsImport) {
+      const module =
+        fileContext.flutterConfig?.importStatement.match(/import\s+['"]([^'"]+)['"]/)?.[1] ||
+        (fileContext.i18nLibrary === "flutter_intl"
+          ? "generated/l10n.dart"
+          : "package:flutter_gen/gen_l10n/app_localizations.dart");
+      const value =
+        fileContext.flutterConfig?.className ||
+        (fileContext.i18nLibrary === "flutter_intl" ? "S" : "AppLocalizations");
       changes.push({
         type: "ADD_IMPORT",
-        value: "AppLocalizations",
-        module: "package:flutter_gen/gen_l10n/app_localizations.dart",
+        value,
+        module,
       });
     }
     return changes;

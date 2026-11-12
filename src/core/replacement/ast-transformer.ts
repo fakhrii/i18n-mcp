@@ -35,18 +35,22 @@ export function injectRequiredImports(
   const dartImportChange = codeChanges.find(
     (c) =>
       c.type === "ADD_IMPORT" &&
-      c.module?.includes("package:flutter_gen/gen_l10n/app_localizations.dart")
+      (c.module?.includes("package:") || c.module?.includes(".dart"))
   );
-  if (dartImportChange && !result.includes("app_localizations.dart")) {
-    const importStmt = "import 'package:flutter_gen/gen_l10n/app_localizations.dart';\n";
-    const firstImportMatch = result.match(/^import\s+['"][^'"]+['"];/m);
-    if (firstImportMatch && firstImportMatch.index !== undefined) {
-      result =
-        result.slice(0, firstImportMatch.index) +
-        importStmt +
-        result.slice(firstImportMatch.index);
-    } else {
-      result = `${importStmt}\n${result}`;
+  if (dartImportChange && dartImportChange.module) {
+    const mod = dartImportChange.module;
+    const baseName = mod.split("/").pop()?.replace(/\.dart$/, "") || mod;
+    if (!result.includes(mod) && !result.includes(`/${baseName}.dart`)) {
+      const importStmt = `import '${mod}';\n`;
+      const firstImportMatch = result.match(/^import\s+['"][^'"]+['"];/m);
+      if (firstImportMatch && firstImportMatch.index !== undefined) {
+        result =
+          result.slice(0, firstImportMatch.index) +
+          importStmt +
+          result.slice(firstImportMatch.index);
+      } else {
+        result = `${importStmt}\n${result}`;
+      }
     }
   }
 
@@ -54,7 +58,8 @@ export function injectRequiredImports(
     (c) =>
       c.type === "ADD_IMPORT" &&
       c.module &&
-      !c.module.startsWith("package:")
+      !c.module.startsWith("package:") &&
+      !c.module.endsWith(".dart")
   );
   if (importChanges.length === 0) {
     return result;
@@ -526,7 +531,9 @@ export function injectRequiredHooks(
  * Handles arbitrarily nested widget trees, constructor calls, and collection literals.
  */
 export function stripInvalidDartConst(content: string): string {
-  if (!content.includes("AppLocalizations.of(context)")) {
+  const HAS_DART_L10N =
+    /(?:AppLocalizations|Localized|S)\.(?:of\s*\(\s*context\s*\)|current)|\bl10n\./;
+  if (!HAS_DART_L10N.test(content)) {
     return content;
   }
 
@@ -534,6 +541,7 @@ export function stripInvalidDartConst(content: string): string {
     start: number;
     end: number;
     depth: number;
+    isDeclaration: boolean;
     remove: boolean;
   }
 
@@ -597,12 +605,16 @@ export function stripInvalidDartConst(content: string): string {
       continue;
     }
 
-    // 4. Check for AppLocalizations.of(context)
-    if (content.startsWith("AppLocalizations.of(context)", i)) {
+    // 4. Check for runtime localization calls
+    const sub = content.slice(i, i + 40);
+    const l10nMatch = sub.match(
+      /^(?:(?:AppLocalizations|Localized|S)\.(?:of\s*\(\s*context\s*\)!?|current)|l10n\.)/
+    );
+    if (l10nMatch) {
       for (const scope of constScopes) {
         scope.remove = true;
       }
-      i += "AppLocalizations.of(context)".length;
+      i += l10nMatch[0].length;
       continue;
     }
 
@@ -619,10 +631,12 @@ export function stripInvalidDartConst(content: string): string {
       }
       const constEnd = j;
 
-      // Look ahead to find opening delimiter: '(', '[', or '{'
+      // Look ahead to check if this is an expression const (const Text, const [, const {)
+      // or a variable declaration (const map = ..., static const Map<String, String> map = ...)
       let lookAhead = j;
-      let foundDelimiter: string | null = null;
+      let isDeclaration = false;
       let genericDepth = 0;
+      let foundOpeningDelimiter = false;
 
       while (lookAhead < len) {
         const char = content[lookAhead]!;
@@ -631,22 +645,35 @@ export function stripInvalidDartConst(content: string): string {
         } else if (char === ">") {
           genericDepth = Math.max(0, genericDepth - 1);
         } else if (genericDepth === 0) {
-          if (char === "(" || char === "[" || char === "{") {
-            foundDelimiter = char;
+          if (char === "=") {
+            isDeclaration = true;
             break;
           }
-          if (char === ";" || char === "=" || char === "\n") {
+          if (char === ";" || char === "\n") {
+            break;
+          }
+          if (char === "(" || char === "[" || char === "{") {
+            foundOpeningDelimiter = true;
             break;
           }
         }
         lookAhead++;
       }
 
-      if (foundDelimiter) {
+      if (isDeclaration) {
+        constScopes.push({
+          start: constStart,
+          end: constStart + 5,
+          depth: bracketStack.length,
+          isDeclaration: true,
+          remove: false,
+        });
+      } else if (foundOpeningDelimiter) {
         constScopes.push({
           start: constStart,
           end: constEnd,
           depth: bracketStack.length + 1,
+          isDeclaration: false,
           remove: false,
         });
       }
@@ -655,7 +682,7 @@ export function stripInvalidDartConst(content: string): string {
       continue;
     }
 
-    // 6. Track brackets: (, [, {
+    // 6. Track brackets and semicolons
     const char = content[i]!;
     if (char === "(" || char === "[" || char === "{") {
       bracketStack.push(char === "(" ? ")" : char === "[" ? "]" : "}");
@@ -664,9 +691,16 @@ export function stripInvalidDartConst(content: string): string {
         bracketStack.pop();
         const currentDepth = bracketStack.length;
         for (let s = constScopes.length - 1; s >= 0; s--) {
-          if (constScopes[s]!.depth > currentDepth && !constScopes[s]!.remove) {
+          if (!constScopes[s]!.isDeclaration && constScopes[s]!.depth > currentDepth && !constScopes[s]!.remove) {
             constScopes.splice(s, 1);
           }
+        }
+      }
+    } else if (char === ";") {
+      const currentDepth = bracketStack.length;
+      for (let s = constScopes.length - 1; s >= 0; s--) {
+        if (constScopes[s]!.isDeclaration && constScopes[s]!.depth >= currentDepth && !constScopes[s]!.remove) {
+          constScopes.splice(s, 1);
         }
       }
     }
@@ -674,13 +708,17 @@ export function stripInvalidDartConst(content: string): string {
     i++;
   }
 
-  // Remove marked const keywords from end of file to beginning
-  const toRemove = constScopes.filter((s) => s.remove);
-  toRemove.sort((a, b) => b.start - a.start);
+  // Remove or replace marked const keywords from end of file to beginning
+  const toProcess = constScopes.filter((s) => s.remove);
+  toProcess.sort((a, b) => b.start - a.start);
 
   let result = content;
-  for (const scope of toRemove) {
-    result = result.slice(0, scope.start) + result.slice(scope.end);
+  for (const scope of toProcess) {
+    if (scope.isDeclaration) {
+      result = result.slice(0, scope.start) + "final" + result.slice(scope.end);
+    } else {
+      result = result.slice(0, scope.start) + result.slice(scope.end);
+    }
   }
 
   return result;

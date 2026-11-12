@@ -591,11 +591,17 @@ export function generateSemanticKey(
 ): string {
   const trimmed = text.trim();
 
-  // Strip interpolation patterns e.g. {{name}} or ${name} or <tags>
+  // Strip interpolation patterns e.g. {{name}} or ${name} or $name or <tags>
+  // Also strip unicode escapes, control escapes, and bullets/symbols
   const cleanInterpolations = trimmed
     .replace(/\{\{[^}]+\}\}/g, "")
     .replace(/\$\{[^}]+\}/g, "")
+    .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*/g, "")
     .replace(/<[^>]+>/g, "")
+    .replace(/\\u[0-9a-fA-F]{4}/gi, "")
+    .replace(/\\x[0-9a-fA-F]{2}/gi, "")
+    .replace(/\\[nrtfv0]/gi, " ")
+    .replace(/[\n\r\t•·\u2022\u25CF–—]/g, " ")
     .trim();
 
   // Normalized key for direct phrase lookup: lowercase, accents stripped, punctuation removed
@@ -613,17 +619,37 @@ export function generateSemanticKey(
     return formatKeyByStyle(actionKey.split("_"), keyStyle);
   }
 
-  // 2. Non-Latin script handling (Arabic, CJK, Cyrillic, etc.)
+  // 2. Non-Latin script handling (Arabic, CJK, Cyrillic, etc.) or empty clean text
   const latinClean = normalizedKey.replace(/[^a-z0-9\s]/g, "").trim();
   if (!latinClean) {
+    // If the original text has variables, derive key from variable name!
+    const varMatch =
+      text.match(/\{\{([a-zA-Z0-9_]+)\}\}/) ||
+      text.match(/\$\{([a-zA-Z0-9_]+)\}/) ||
+      text.match(/\$([a-zA-Z_][a-zA-Z0-9_]*)/);
+    if (varMatch && varMatch[1]) {
+      const varWords = extractContextWords(varMatch[1]);
+      const informative = varWords.filter((w) => !GENERIC_CONTEXT_WORDS.has(w));
+      const finalWords = informative.length > 0 ? informative : varWords;
+      if (finalWords.length > 0) {
+        return formatKeyByStyle(finalWords, keyStyle);
+      }
+    }
+
     if (contextPrefix) {
       const prefixWords = extractContextWords(contextPrefix);
-      if (prefixWords.length > 1 || (prefixWords.length === 1 && prefixWords[0]!.length > 4)) {
+      if (prefixWords.length > 1) {
         return formatKeyByStyle(prefixWords, keyStyle);
       }
-      return formatKeyByStyle([...prefixWords, "TEXT"], keyStyle);
+      if (prefixWords.length === 1) {
+        const word = prefixWords[0]!;
+        if (GENERIC_CONTEXT_WORDS.has(word)) {
+          return formatKeyByStyle(["label"], keyStyle);
+        }
+        return formatKeyByStyle([word], keyStyle);
+      }
     }
-    return formatKeyByStyle(["TEXT"], keyStyle);
+    return formatKeyByStyle(["label"], keyStyle);
   }
 
   // 3. Non-English Latin detection & translation
@@ -669,13 +695,22 @@ export function generateSemanticKey(
   }
 
   // 4. Standard English text handling
-  const words = latinClean
+  const rawWords = latinClean
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((w) => w.length > 1 || (w.length === 1 && !["n", "u", "x"].includes(w)))
     .map((w) => w.toLowerCase());
 
-  // Cap at 5 words to avoid huge sentence keys
-  const selectedWords = words.slice(0, 5);
+  const ENGLISH_STOP_WORDS = new Set([
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "from", "is", "as"
+  ]);
 
-  return formatKeyByStyle(selectedWords, keyStyle) || "KEY";
+  // Cap at 5 words to avoid huge sentence keys
+  const selectedWords = rawWords.slice(0, 5);
+
+  // Avoid ending keys on a trailing stop word (e.g. "isInvalidOr" -> "isInvalid")
+  while (selectedWords.length > 1 && ENGLISH_STOP_WORDS.has(selectedWords[selectedWords.length - 1]!)) {
+    selectedWords.pop();
+  }
+
+  return formatKeyByStyle(selectedWords, keyStyle) || "label";
 }

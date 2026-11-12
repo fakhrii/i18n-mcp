@@ -130,6 +130,7 @@ export function formatIcuPlural(
 
 /**
  * Adds or updates a translation entry in the ArbFile.
+ * Note: In Flutter ARB, only entries with variables (placeholders) require the @key metadata block.
  */
 export function setArbEntry(
   arb: ArbFile,
@@ -171,20 +172,22 @@ export function setArbEntry(
     }
   }
 
-  const existingMeta = meta || arb.keyMetadata.get(key) || {
-    description: `Translation for ${key}`,
-  };
-
+  const existingMeta = meta || arb.keyMetadata.get(key);
   const mergedPlaceholders = {
     ...extractedPlaceholders,
-    ...(existingMeta.placeholders || {}),
+    ...(existingMeta?.placeholders || {}),
   };
 
-  arb.keyMetadata.set(key, {
-    ...existingMeta,
-    description: existingMeta.description || `Translation for ${key}`,
-    ...(Object.keys(mergedPlaceholders).length > 0
-      ? { placeholders: mergedPlaceholders }
-      : {}),
-  });
+  const hasVariables = Object.keys(mergedPlaceholders).length > 0;
+
+  if (hasVariables) {
+    arb.keyMetadata.set(key, {
+      ...(existingMeta || {}),
+      description: existingMeta?.description || `Translation for ${key}`,
+      placeholders: mergedPlaceholders,
+    });
+  } else {
+    // Only i18n with variables require the metadata block
+    arb.keyMetadata.delete(key);
+  }
 }

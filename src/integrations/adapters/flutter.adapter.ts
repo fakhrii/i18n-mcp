@@ -1,11 +1,12 @@
 import type { FrameworkAdapter } from "./framework-adapter.interface.js";
+import type { FlutterI18nConfig } from "../../models/project.js";
 
 export class FlutterAdapter implements FrameworkAdapter {
   readonly id = "flutter" as const;
   readonly displayName = "Flutter";
   readonly defaultLanguage = "dart" as const;
   readonly fileExtensions = [".dart"];
-  readonly defaultNamespaces = ["app_en"];
+  readonly defaultNamespaces = ["intl_en", "app_en"];
 
   private readonly textComponents = new Set([
     "Text",
@@ -50,7 +51,14 @@ export class FlutterAdapter implements FrameworkAdapter {
     );
   }
 
-  getDefaultTranslationPattern() {
+  getDefaultTranslationPattern(config?: FlutterI18nConfig) {
+    if (config) {
+      return {
+        importStatement: config.importStatement,
+        hookOrAccessor: config.accessor,
+        callSyntax: config.className,
+      };
+    }
     return {
       importStatement: "import 'package:flutter_gen/gen_l10n/app_localizations.dart';",
       hookOrAccessor: "final l10n = AppLocalizations.of(context)!;",

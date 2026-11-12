@@ -33,11 +33,17 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
     const nameMatch = pubspecContent.match(/^name:\s*([a-zA-Z0-9_-]+)/m);
     const versionMatch = pubspecContent.match(/^version:\s*([^\r\n#]+)/m);
     const flutterDeps: Record<string, string> = { ...dependencies };
+    const flutterDevDeps: Record<string, string> = { ...devDependencies };
+
     if (pubspecContent.includes("flutter_localizations:")) {
       flutterDeps["flutter_localizations"] = "sdk: flutter";
     }
     if (pubspecContent.includes("intl:")) {
       flutterDeps["intl"] = "any";
+    }
+    if (pubspecContent.includes("flutter_intl") || pubspecContent.includes("intl_utils")) {
+      flutterDeps["flutter_intl"] = "any";
+      flutterDevDeps["intl_utils"] = "any";
     }
 
     return {
@@ -47,7 +53,7 @@ export async function detectProjectMetadata(projectRoot: string): Promise<Projec
       packageName: nameMatch?.[1] || packageJson?.name,
       packageVersion: versionMatch?.[1]?.trim() || packageJson?.version,
       dependencies: flutterDeps,
-      devDependencies,
+      devDependencies: flutterDevDeps,
     };
   }
 

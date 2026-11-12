@@ -1,6 +1,6 @@
 {
   "name": "@fakhrii/i18n-mcp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Production-quality MCP server for automated internationalization across React Native, React (web), Next.js, Flutter, and Angular projects",
   "type": "module",
   "bin": {

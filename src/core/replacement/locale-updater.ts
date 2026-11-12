@@ -172,7 +172,7 @@ export async function prepareLocaleUpdates(
           entriesAdded++;
           translationEntriesCreated++;
         } else {
-          setArbEntry(arb, entry.key, entry.sourceLocale.value, { description: `Translation for ${entry.key}` });
+          setArbEntry(arb, entry.key, entry.sourceLocale.value);
           entriesAdded++;
           translationEntriesCreated++;
         }

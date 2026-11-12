@@ -76,16 +76,25 @@ export const TECHNICAL_UNITS_AND_SEPARATORS = new Set([
 ]);
 
 export function isOnlyVariablesAndPunctuation(text: string): boolean {
-  const hasVariables = /\{\{[^}]+\}\}/.test(text) || /\$\{[^}]+\}/.test(text);
+  const hasVariables =
+    /\{\{[^}]+\}\}/.test(text) ||
+    /\$\{[^}]+\}/.test(text) ||
+    /\$[a-zA-Z_][a-zA-Z0-9_]*/.test(text);
+
   if (!hasVariables) return false;
 
   const stripped = text
     .replace(/\{\{[^}]+\}\}/g, "")
     .replace(/\$\{[^}]+\}/g, "")
+    .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*/g, "")
+    .replace(/\\u[0-9a-fA-F]{4}/gi, "")
+    .replace(/\\x[0-9a-fA-F]{2}/gi, "")
+    .replace(/\\[nrtfv0]/gi, "")
+    .replace(/[\n\r\t•·\u2022\u25CF–—]/g, "")
     .trim();
 
   if (!stripped) return true;
-  if (!/[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/.test(stripped)) return true;
+  if (!/\p{L}/u.test(stripped)) return true;
 
   const remainingWords = stripped
     .split(/[\s\d\-=_+!@#$%^&*()[\]{};':",.<>/?\\|`~–—•·“”‘’…°€£¥₹₽₩×÷±≠≤≥→←↑↓]+/)
@@ -96,6 +105,25 @@ export function isOnlyVariablesAndPunctuation(text: string): boolean {
     return true;
   }
   return false;
+}
+
+export function isMaskOrPlaceholderPattern(text: string): boolean {
+  const stripped = text
+    .replace(/\{\{[^}]+\}\}/g, "")
+    .replace(/\$\{[^}]+\}/g, "")
+    .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*/g, "")
+    .replace(/\\u[0-9a-fA-F]{4}/gi, "")
+    .replace(/\\x[0-9a-fA-F]{2}/gi, "")
+    .replace(/\\[nrtfv0]/gi, "")
+    .replace(/[\n\r\t•·\u2022\u25CF–—]/g, "")
+    .trim();
+
+  if (!stripped) return false;
+  // Mask pattern e.g. XXXX-XXXX, ****-****, ••••, XXXX, etc.
+  return (
+    /^[\s\d\-=_+/:,.*•#Xx]+$/.test(stripped) &&
+    !/[a-wYZ\u00C0-\u024F\u1E00-\u1EFF]/i.test(stripped.replace(/[Xx]/g, ""))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -464,13 +492,13 @@ export function classifyString(params: ClassifyParams): ClassificationResult {
   }
 
   // --- Step 1: Syntactic Invariants & Universal Non-Text Checks ---
-  if (!trimmed || PURE_SYMBOLS_REGEX.test(trimmed)) {
+  if (!trimmed || !/\p{L}/u.test(trimmed) || PURE_SYMBOLS_REGEX.test(trimmed)) {
     return {
       classification: "TECHNICAL",
       confidence: 0.99,
       confidenceLevel: "HIGH",
       semanticRole: "CONFIRMED_TECHNICAL",
-      reason: "Empty text or punctuation/symbols only",
+      reason: "Empty text or punctuation/symbols only (no letters)",
       isUserFacing: false,
     };
   }
@@ -482,6 +510,17 @@ export function classifyString(params: ClassifyParams): ClassificationResult {
       confidenceLevel: "HIGH",
       semanticRole: "CONFIRMED_TECHNICAL",
       reason: "Composed only of variables and punctuation",
+      isUserFacing: false,
+    };
+  }
+
+  if (isMaskOrPlaceholderPattern(trimmed)) {
+    return {
+      classification: "TECHNICAL",
+      confidence: 0.99,
+      confidenceLevel: "HIGH",
+      semanticRole: "CONFIRMED_TECHNICAL",
+      reason: "Mask or placeholder pattern (e.g. card/PAN masking)",
       isUserFacing: false,
     };
   }
@@ -548,7 +587,14 @@ export function classifyString(params: ClassifyParams): ClassificationResult {
       calleeName.startsWith("logger.") ||
       calleeName === "log" ||
       calleeName === "warn" ||
-      calleeName === "error")
+      calleeName === "error" ||
+      calleeName === "debugPrint" ||
+      calleeName === "print" ||
+      calleeName.endsWith(".log") ||
+      calleeName.startsWith("assert") ||
+      calleeName.includes("Exception") ||
+      (/^(?:new\s+)?[A-Z][a-zA-Z0-9_]*(?:Exception|Error)$/.test(calleeName)) ||
+      calleeName.startsWith("throw"))
   ) {
     return {
       classification: "LOG",

@@ -13,12 +13,16 @@ export interface KeyCollisionResolution {
  * - If key exists and text has the same meaning: reuses existing key.
  * - If key exists with different text/meaning: generates a differentiated unique key.
  */
+import type { KeyNamingStyle } from "../keys/key-generator.js";
+import { formatKeyByStyle } from "../keys/key-generator.js";
+
 export function resolveKeyCollision(
   candidateKey: string,
   sourceText: string,
   _namespace: string,
   existingNamespaceKeys: Set<string>,
-  existingKeyValues?: Map<string, string>
+  existingKeyValues?: Map<string, string>,
+  keyStyle: KeyNamingStyle = "UPPER_SNAKE_CASE"
 ): KeyCollisionResolution {
   // 1. If key is not in use in this namespace, use it as is
   if (!existingNamespaceKeys.has(candidateKey)) {
@@ -47,34 +51,44 @@ export function resolveKeyCollision(
   }
 
   // 3. Semantic collision: Differentiate key
-  // First attempt: generate key using full source text with more words
-  const words = sourceText
-    .trim()
+  // Strip interpolations, escape codes, variables, and bullets first!
+  const cleanText = sourceText
+    .replace(/\{\{[^}]+\}\}/g, " ")
+    .replace(/\$\{[^}]+\}/g, " ")
+    .replace(/\$[a-zA-Z0-9_]+/g, " ")
+    .replace(/\\u[0-9a-fA-F]{4}/gi, " ")
+    .replace(/\\[nrtfv0]/gi, " ")
+    .replace(/[\n\r\t•·\u2022\u25CF–—]/g, " ")
+    .trim();
+
+  const words = cleanText
     .replace(/[^a-zA-Z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w.toUpperCase());
+    .filter((w) => w.length > 1)
+    .map((w) => w.toLowerCase());
 
-  // Try candidate combinations from words
-  for (let len = Math.min(words.length, 6); len >= 2; len--) {
-    const longerKey = words.slice(0, len).join("_");
-    if (longerKey && !existingNamespaceKeys.has(longerKey)) {
-      return { key: longerKey, action: "CREATE" };
+  if (words.length > 0) {
+    for (let len = Math.min(words.length, 6); len >= 2; len--) {
+      const longerKey = formatKeyByStyle(words.slice(0, len), keyStyle);
+      if (longerKey && !existingNamespaceKeys.has(longerKey)) {
+        return { key: longerKey, action: "CREATE" };
+      }
     }
   }
 
   // Second attempt: try full text key
-  const fullTextKey = generateSemanticKey(sourceText);
+  const fullTextKey = generateSemanticKey(cleanText || sourceText, undefined, keyStyle);
   if (fullTextKey && !existingNamespaceKeys.has(fullTextKey)) {
     return { key: fullTextKey, action: "CREATE" };
   }
 
-  // Third attempt: append incremental suffix
+  // Third attempt: append incremental suffix respecting keyStyle
   let counter = 2;
-  let suffixedKey = `${candidateKey}_${counter}`;
+  const isCamel = keyStyle === "lowerCamelCase" || keyStyle === "camelCase";
+  let suffixedKey = isCamel ? `${candidateKey}${counter}` : `${candidateKey}_${counter}`;
   while (existingNamespaceKeys.has(suffixedKey)) {
     counter++;
-    suffixedKey = `${candidateKey}_${counter}`;
+    suffixedKey = isCamel ? `${candidateKey}${counter}` : `${candidateKey}_${counter}`;
   }
 
   return { key: suffixedKey, action: "CREATE" };

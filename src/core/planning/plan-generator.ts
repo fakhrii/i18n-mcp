@@ -217,10 +217,20 @@ export async function generateI18nPlan(
   const isSubdirStructure =
     structureType === "namespaces" ? detectedSubdirStructure : false;
 
+  const flutterConfig = analysis.flutterConfig || analysis.i18n.flutterConfig;
   const isArb =
     analysis.framework === "flutter" ||
     analysis.i18n.library === "flutter_localizations" ||
+    analysis.i18n.library === "flutter_intl" ||
     Boolean(effectiveLocaleDir && (effectiveLocaleDir.includes("l10n") || effectiveLocaleDir.endsWith(".arb")));
+
+  const arbPrefix =
+    flutterConfig?.arbPrefix ||
+    (analysis.namespaces.some((n) => n.startsWith("intl_"))
+      ? "intl_"
+      : analysis.namespaces.some((n) => n.startsWith("app_"))
+      ? "app_"
+      : "intl_");
 
   const localeContext: LocalePlanningContext = {
     projectRoot,
@@ -230,6 +240,7 @@ export async function generateI18nPlan(
     isSubdirStructure,
     existingTargetTranslations: targetLocaleTranslations,
     isArb,
+    arbPrefix,
   };
 
   // 5. Track used keys and values per namespace to detect collisions
@@ -278,7 +289,7 @@ export async function generateI18nPlan(
         (analysis.framework === "nextjs"
           ? "next-intl"
           : analysis.framework === "flutter"
-          ? "flutter_localizations"
+          ? (flutterConfig?.engine || "flutter_intl")
           : "react-i18next");
 
   for (const relFile of uniqueFiles) {
@@ -287,10 +298,12 @@ export async function generateI18nPlan(
     const ctx = analyzeFileTranslationContext(
       content,
       primaryAccessPattern,
-      targetLibrary
+      targetLibrary,
+      flutterConfig
     );
     ctx.filePath = toPosixPath(relFile);
     ctx.i18nLibrary = targetLibrary;
+    ctx.flutterConfig = flutterConfig;
     fileContexts.set(relFile, ctx);
   }
 
@@ -399,9 +412,15 @@ export async function generateI18nPlan(
     } else {
       // Step B: Generate new semantic key & resolve collision
       finalNamespace = preferredNs;
+      const isFlutter =
+        analysis.framework === "flutter" ||
+        analysis.i18n.library === "flutter_intl" ||
+        isArb;
+      const keyStyle = isFlutter ? "lowerCamelCase" : "UPPER_SNAKE_CASE";
+
       const candidateKey =
         primaryItem.suggestedKey ||
-        generateSemanticKey(rawText, primaryItem.propName || primaryItem.componentName);
+        generateSemanticKey(rawText, primaryItem.propName || primaryItem.componentName, keyStyle);
 
       const nsKeys = namespaceUsedKeys.get(finalNamespace) || new Set<string>();
       namespaceUsedKeys.set(finalNamespace, nsKeys);
@@ -413,7 +432,8 @@ export async function generateI18nPlan(
         rawText,
         finalNamespace,
         nsKeys,
-        nsKeyValues
+        nsKeyValues,
+        keyStyle
       );
 
       finalKey = collision.key;
@@ -434,7 +454,8 @@ export async function generateI18nPlan(
         sourceLocale,
         finalNamespace,
         isSubdirStructure,
-        isArb
+        isArb,
+        arbPrefix
       );
 
       transPlan = {
